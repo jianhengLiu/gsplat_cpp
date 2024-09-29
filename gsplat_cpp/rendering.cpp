@@ -142,6 +142,9 @@ rasterization(torch::Tensor means,           //[N, 3]
   meta["tile_height"] = torch::tensor({tile_height});
   meta["tiles_per_gauss"] = tiles_per_gauss;
   meta["isect_offsets"] = isect_offsets;
+  meta["width"] = torch::tensor({width});
+  meta["height"] = torch::tensor({height});
+  meta["n_cameras"] = torch::tensor({C});
 
   /* meta.update(
         {
@@ -151,10 +154,7 @@ rasterization(torch::Tensor means,           //[N, 3]
             "isect_ids": isect_ids,
             "flatten_ids": flatten_ids,
             "isect_offsets": isect_offsets,
-            "width": width,
-            "height": height,
             "tile_size": tile_size,
-            "n_cameras": C,
         }
     ) */
 
