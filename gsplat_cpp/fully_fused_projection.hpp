@@ -22,7 +22,6 @@ public:
           int width, int height, float eps2d, float near_plane, float far_plane,
           float radius_clip, bool sparse_grad, bool calc_compensations,
           const std::string &camera_model = "pinhole") {
-
     auto camera_model_type = gsplat::CameraModelType::PINHOLE;
 
     auto [indptr, camera_ids, gaussian_ids, radii, means2d, depths, conics,
@@ -35,16 +34,19 @@ public:
             viewmats, Ks, width, height, eps2d, near_plane, far_plane,
             radius_clip, calc_compensations, camera_model_type);
 
-    if (!calc_compensations) {
-      compensations = torch::Tensor();
-    }
-
     ctx->save_for_backward(
-        {camera_ids, gaussian_ids, means, viewmats, Ks, conics, compensations});
+        {camera_ids, gaussian_ids, means, viewmats, Ks, conics});
 
     ctx->saved_data["covars"] = covars;
     ctx->saved_data["quats"] = quats;
     ctx->saved_data["scales"] = scales;
+    if (!calc_compensations) {
+      ctx->saved_data["compensations"] = at::nullopt;
+      compensations = torch::zeros({means2d.size(0)}, means.options());
+    } else {
+      ctx->saved_data["compensations"] =
+          at::optional<torch::Tensor>(compensations);
+    }
 
     ctx->saved_data["width"] = width;
     ctx->saved_data["height"] = height;
@@ -62,7 +64,7 @@ public:
     auto v_means2d = grad_outputs[3];
     auto v_depths = grad_outputs[4];
     auto v_conics = grad_outputs[5];
-    auto v_compensations = grad_outputs[6];
+    auto v_compensations = at::optional<torch::Tensor>(grad_outputs[6]);
 
     auto saved = ctx->get_saved_variables();
     auto camera_ids = saved[0];
@@ -71,11 +73,12 @@ public:
     auto viewmats = saved[3];
     auto Ks = saved[4];
     auto conics = saved[5];
-    auto compensations = saved[6];
 
     auto covars = ctx->saved_data["covars"].toOptional<torch::Tensor>();
     auto quats = ctx->saved_data["quats"].toOptional<torch::Tensor>();
     auto scales = ctx->saved_data["scales"].toOptional<torch::Tensor>();
+    auto compensations =
+        ctx->saved_data["compensations"].toOptional<torch::Tensor>();
 
     int width = ctx->saved_data["width"].toInt();
     int height = ctx->saved_data["height"].toInt();
@@ -83,8 +86,10 @@ public:
     bool sparse_grad = ctx->saved_data["sparse_grad"].toBool();
     int camera_model_type = ctx->saved_data["camera_model_type"].toInt();
 
-    if (v_compensations.defined()) {
-      v_compensations = v_compensations.contiguous();
+    if (compensations.has_value()) {
+      v_compensations = v_compensations.value().contiguous();
+    } else {
+      v_compensations = at::nullopt;
     }
 
     auto [v_means, v_covars, v_quats, v_scales, v_viewmats] =
@@ -175,7 +180,7 @@ fully_fused_projection(Tensor means,    // [N, 3]
   Ks = Ks.contiguous();
 
   auto outputs = FullyFusedProjectionPacked::apply(
-      means, Tensor(), quats, scales, viewmats, Ks, width, height, eps2d,
+      means, at::nullopt, quats, scales, viewmats, Ks, width, height, eps2d,
       near_plane, far_plane, radius_clip, sparse_grad, calc_compensations);
   return std::make_tuple(outputs[0], outputs[1], outputs[2], outputs[3],
                          outputs[4], outputs[5], outputs[6]);

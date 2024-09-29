@@ -9,14 +9,19 @@
 #include "isect_tiles.hpp"
 #include "rasterize_to_pixels.hpp"
 #include "spherical_harmonics.hpp"
-
+namespace gsplat_cpp {
 std::tuple<torch::Tensor, torch::Tensor, std::map<std::string, torch::Tensor>>
-rasterization(torch::Tensor &means, torch::Tensor &quats, torch::Tensor &scales,
-              torch::Tensor &opacities, torch::Tensor &colors,
-              const torch::Tensor &viewmats, const torch::Tensor &Ks, int width,
-              int height, float near_plane, float far_plane, float radius_clip,
-              float eps2d, std::optional<int> sh_degree, bool packed,
-              int tile_size, at::optional<torch::Tensor> backgrounds,
+rasterization(torch::Tensor means,           //[N, 3]
+              torch::Tensor quats,           // [N, 4]
+              torch::Tensor scales,          // [N, 3]
+              torch::Tensor opacities,       // [N]
+              torch::Tensor colors,          //[(C,) N, D] or [(C,) N, K, 3]
+              const torch::Tensor &viewmats, //[C, 4, 4]
+              const torch::Tensor &Ks,       //[C, 3, 3]
+              int width, int height, float near_plane, float far_plane,
+              float radius_clip, float eps2d, std::optional<int> sh_degree,
+              bool packed, int tile_size,
+              at::optional<torch::Tensor> backgrounds,
               const std::string &render_mode, bool sparse_grad, bool absgrad,
               const std::string &rasterize_mode, int channel_chunk,
               bool distributed, const std::string &camera_model) {
@@ -42,51 +47,25 @@ rasterization(torch::Tensor &means, torch::Tensor &quats, torch::Tensor &scales,
                   render_mode == "RGB+ED",
               "Invalid render_mode");
 
-  /* def reshape_view(C: int, world_view: torch.Tensor, N_world: list) ->
-  torch.Tensor: view_list = list( map( lambda x: x.split(int(x.shape[0] / C),
-  dim=0), world_view.split([C * N_i for N_i in N_world], dim=0),
-          )
-      )
-      return torch.stack([torch.cat(l, dim=0) for l in zip(*view_list)], dim=0)
+  if (sh_degree.has_value()) {
+    // # treat colors as SH coefficients, should be in shape [N, K, 3] or [C, N,
+    // K, 3] # Allowing for activating partial SH bands
+    TORCH_CHECK(
+        (colors.dim() == 3 && colors.size(0) == N && colors.size(2) == 3) ||
+            (colors.dim() == 4 &&
+             colors.sizes().slice(0, 2) == torch::IntArrayRef({C, N}) &&
+             colors.size(3) == 3),
+        "Invalid colors shape");
+  } else {
+    TORCH_CHECK((colors.dim() == 2 && colors.size(0) == N) ||
+                    (colors.dim() == 3 &&
+                     colors.sizes().slice(0, 2) == torch::IntArrayRef({C, N})),
+                "Invalid colors shape");
+  }
 
-  if sh_degree is None:
-      # treat colors as post-activation values, should be in shape [N, D] or [C,
-  N, D] assert (colors.dim() == 2 and colors.shape[0] == N) or ( colors.dim() ==
-  3 and colors.shape[:2] == (C, N)
-      ), colors.shape
-      if distributed:
-          assert (
-              colors.dim() == 2
-          ), "Distributed mode only supports per-Gaussian colors."
-  else:
-      # treat colors as SH coefficients, should be in shape [N, K, 3] or [C, N,
-  K, 3] # Allowing for activating partial SH bands assert ( colors.dim() == 3
-  and colors.shape[0] == N and colors.shape[2] == 3 ) or ( colors.dim() == 4 and
-  colors.shape[:2] == (C, N) and colors.shape[3] == 3
-      ), colors.shape
-      assert (sh_degree + 1) ** 2 <= colors.shape[-2], colors.shape
-      if distributed:
-          assert (
-              colors.dim() == 3
-          ), "Distributed mode only supports per-Gaussian colors."
-
-  if absgrad:
-      assert not distributed, "AbsGrad is not supported in distributed mode."
-
-  # If in distributed mode, we distribute the projection computation over
-  Gaussians # and the rasterize computation over cameras. So first we gather the
-  cameras # from all ranks for projection. if distributed: world_rank =
-  torch.distributed.get_rank() world_size = torch.distributed.get_world_size()
-
-      # Gather the number of Gaussians in each rank.
-      N_world = all_gather_int32(world_size, N, device=device)
-
-      # Enforce that the number of cameras is the same across all ranks.
-      C_world = [C] * world_size
-      viewmats, Ks = all_gather_tensor_list(world_size, [viewmats, Ks])
-
-      # Silently change C from local #Cameras to global #Cameras.
-      C = len(viewmats) */
+  if (absgrad) {
+    TORCH_CHECK(!distributed, "AbsGrad is not supported in distributed mode.");
+  }
 
   // Project Gaussians to 2D
   auto [camera_ids, gaussian_ids, radii, means2d, depths, conics,
@@ -97,9 +76,9 @@ rasterization(torch::Tensor &means, torch::Tensor &quats, torch::Tensor &scales,
 
   opacities = opacities.index({gaussian_ids});
 
-  if (compensations.defined()) {
-    opacities = opacities * compensations;
-  }
+  // if (compensations.defined()) {
+  //   opacities = opacities * compensations;
+  // }
 
   // # global camera_ids
   meta["camera_ids"] = camera_ids;
@@ -162,7 +141,7 @@ rasterization(torch::Tensor &means, torch::Tensor &quats, torch::Tensor &scales,
       isect_tiles(means2d, radii, depths, tile_size, tile_width, tile_height,
                   true, packed, C, camera_ids, gaussian_ids);
   auto isect_offsets =
-      isect_offset_encode(tiles_per_gauss, C, tile_width, tile_height);
+      isect_offset_encode(isect_ids, C, tile_width, tile_height);
 
   meta["tile_width"] = torch::tensor({tile_width});
   meta["tile_height"] = torch::tensor({tile_height});
@@ -199,20 +178,19 @@ rasterization(torch::Tensor &means, torch::Tensor &quats, torch::Tensor &scales,
                      torch::indexing::Slice(i * channel_chunk,
                                             (i + 1) * channel_chunk)})
               : torch::Tensor();
-      auto [render_colors_, render_alphas_] = rasterize_to_pixels(
-          means2d, conics, colors_chunk, opacities, width, height, tile_size,
-          isect_offsets, flatten_ids, backgrounds_chunk, torch::Tensor(),
-          packed, absgrad);
+      auto [render_colors_, render_alphas_] =
+          rasterize_to_pixels(means2d, conics, colors_chunk, opacities, width,
+                              height, tile_size, isect_offsets, flatten_ids,
+                              backgrounds_chunk, at::nullopt, packed, absgrad);
       render_colors_vec.push_back(render_colors_);
       render_alphas_vec.push_back(render_alphas_);
     }
     render_colors = torch::cat(render_colors_vec, -1);
     render_alphas = render_alphas_vec[0];
   } else {
-    std::tie(render_colors, render_alphas) =
-        rasterize_to_pixels(means2d, conics, colors, opacities, width, height,
-                            tile_size, isect_offsets, flatten_ids, backgrounds,
-                            torch::Tensor(), packed, absgrad);
+    std::tie(render_colors, render_alphas) = rasterize_to_pixels(
+        means2d, conics, colors, opacities, width, height, tile_size,
+        isect_offsets, flatten_ids, backgrounds, at::nullopt, packed, absgrad);
   }
 
   if (render_mode == "ED" || render_mode == "RGB+ED") {
@@ -229,3 +207,4 @@ rasterization(torch::Tensor &means, torch::Tensor &quats, torch::Tensor &scales,
 
   return std::make_tuple(render_colors, render_alphas, meta);
 }
+} // namespace gsplat_cpp

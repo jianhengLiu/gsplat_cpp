@@ -8,13 +8,13 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
 isect_tiles(const torch::Tensor &means2d, // [C, N, 2] or [nnz, 2]
             const torch::Tensor &radii,   // [C, N] or [nnz]
             const torch::Tensor &depths,  // [C, N] or [nnz]
-            int tile_size, int tile_width, int tile_height, bool sort = true,
-            bool packed = false, int n_cameras = -1,
+            uint32_t tile_size, uint32_t tile_width, uint32_t tile_height,
+            bool sort = true, bool packed = false, int n_cameras = -1,
             const torch::Tensor &camera_ids = torch::Tensor(),
             const torch::Tensor &gaussian_ids = torch::Tensor()) {
   torch::NoGradGuard no_grad;
 
-  int C;
+  uint32_t C;
   int64_t nnz = means2d.size(0);
   TORCH_CHECK(means2d.sizes() == torch::IntArrayRef({nnz, 2}),
               "Invalid shape for means2d");
@@ -37,10 +37,9 @@ isect_tiles(const torch::Tensor &means2d, // [C, N, 2] or [nnz, 2]
 }
 
 torch::Tensor isect_offset_encode(const torch::Tensor &isect_ids, // [n_isects]
-                                  int n_cameras, int tile_width,
-                                  int tile_height) {
+                                  uint32_t n_cameras, uint32_t tile_width,
+                                  uint32_t tile_height) {
   torch::NoGradGuard no_grad;
-
   // Call the CUDA function
   return gsplat::isect_offset_encode_tensor(isect_ids.contiguous(), n_cameras,
                                             tile_width, tile_height);

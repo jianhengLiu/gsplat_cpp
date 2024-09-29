@@ -47,10 +47,11 @@ public:
   }
 };
 
-torch::Tensor spherical_harmonics(int degrees_to_use,
-                                  torch::Tensor dirs,   // [..., 3]
-                                  torch::Tensor coeffs, // [..., K, 3]
-                                  torch::Tensor masks = torch::Tensor()) {
+torch::Tensor
+spherical_harmonics(int degrees_to_use,
+                    torch::Tensor dirs,   // [..., 3]
+                    torch::Tensor coeffs, // [..., K, 3]
+                    at::optional<torch::Tensor> masks = at::nullopt) {
   // Check the input tensor shapes
   TORCH_CHECK((degrees_to_use + 1) * (degrees_to_use + 1) <= coeffs.size(-2),
               "Invalid coeffs shape");
@@ -66,10 +67,10 @@ torch::Tensor spherical_harmonics(int degrees_to_use,
   dirs = dirs.contiguous();
   coeffs = coeffs.contiguous();
 
-  if (masks.defined()) {
-    TORCH_CHECK(masks.sizes() == dirs.sizes().slice(0, dirs.dim() - 1),
+  if (masks.has_value()) {
+    TORCH_CHECK(masks.value().sizes() == dirs.sizes().slice(0, dirs.dim() - 1),
                 "Shape mismatch between masks and dirs");
-    masks = masks.contiguous();
+    masks = masks.value().contiguous();
   }
 
   // Call the custom autograd function
