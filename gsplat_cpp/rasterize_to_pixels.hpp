@@ -79,13 +79,13 @@ public:
     //   means2d.grad() = v_means2d_abs;
     // }
 
-    torch::Tensor v_backgrounds;
-    if (ctx->needs_input_grad(4)) {
-      v_backgrounds =
-          (v_render_colors * (1.0 - render_alphas).to(torch::kFloat))
-              .sum({1, 2});
-    } else {
-      v_backgrounds = torch::Tensor();
+    torch::Tensor v_backgrounds = torch::Tensor();
+    if (backgrounds.has_value()) {
+      if (backgrounds.value().requires_grad()) {
+        v_backgrounds =
+            (v_render_colors * (1.0 - render_alphas).to(torch::kFloat))
+                .sum({1, 2});
+      }
     }
 
     return {

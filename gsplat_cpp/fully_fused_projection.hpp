@@ -13,12 +13,11 @@ struct FullyFusedProjectionPacked
 public:
   static torch::autograd::tensor_list
   forward(torch::autograd::AutogradContext *ctx,
-          torch::Tensor means,                       // [N, 3]
-          const at::optional<torch::Tensor> &covars, // [N, 6] or None
-          const at::optional<torch::Tensor> &quats,  // [N, 4] or None
-          const at::optional<torch::Tensor> &scales, // [N, 3] or None
-          torch::Tensor viewmats,                    // [C, 4, 4]
-          torch::Tensor Ks,                          // [C, 3, 3]
+          const torch::Tensor &means,    // [N, 3]
+          const torch::Tensor &quats,    // [N, 4] or None
+          const torch::Tensor &scales,   // [N, 3] or None
+          const torch::Tensor &viewmats, // [C, 4, 4]
+          const torch::Tensor &Ks,       // [C, 3, 3]
           int width, int height, float eps2d, float near_plane, float far_plane,
           float radius_clip, bool sparse_grad, bool calc_compensations) {
     auto camera_model_type = gsplat::CameraModelType::PINHOLE;
@@ -27,18 +26,15 @@ public:
           compensations] =
         gsplat::fully_fused_projection_packed_fwd_tensor(
             means,
-            covars, // optional
-            quats,  // optional
-            scales, // optional
+            at::nullopt, // optional
+            quats,       // optional
+            scales,      // optional
             viewmats, Ks, width, height, eps2d, near_plane, far_plane,
             radius_clip, calc_compensations, camera_model_type);
 
     ctx->save_for_backward(
-        {camera_ids, gaussian_ids, means, viewmats, Ks, conics});
+        {camera_ids, gaussian_ids, means, quats, scales, viewmats, Ks, conics});
 
-    ctx->saved_data["covars"] = covars;
-    ctx->saved_data["quats"] = quats;
-    ctx->saved_data["scales"] = scales;
     if (!calc_compensations) {
       ctx->saved_data["compensations"] = at::nullopt;
       compensations = torch::ones({means2d.size(0)}, means.options());
@@ -68,13 +64,12 @@ public:
     auto camera_ids = saved[0];
     auto gaussian_ids = saved[1];
     auto means = saved[2];
-    auto viewmats = saved[3];
-    auto Ks = saved[4];
-    auto conics = saved[5];
+    auto quats = saved[3];
+    auto scales = saved[4];
+    auto viewmats = saved[5];
+    auto Ks = saved[6];
+    auto conics = saved[7];
 
-    auto covars = ctx->saved_data["covars"].toOptional<torch::Tensor>();
-    auto quats = ctx->saved_data["quats"].toOptional<torch::Tensor>();
-    auto scales = ctx->saved_data["scales"].toOptional<torch::Tensor>();
     auto compensations =
         ctx->saved_data["compensations"].toOptional<torch::Tensor>();
 
@@ -93,8 +88,8 @@ public:
 
     auto [v_means, v_covars, v_quats, v_scales, v_viewmats] =
         gsplat::fully_fused_projection_packed_bwd_tensor(
-            means, covars, quats, scales, viewmats, Ks, width, height, eps2d,
-            gsplat::CameraModelType(camera_model_type), camera_ids,
+            means, at::nullopt, quats, scales, viewmats, Ks, width, height,
+            eps2d, gsplat::CameraModelType(camera_model_type), camera_ids,
             gaussian_ids, conics, compensations, v_means2d.contiguous(),
             v_depths.contiguous(), v_conics.contiguous(), v_compensations,
             ctx->needs_input_grad(4), // viewmats_requires_grad
@@ -112,34 +107,27 @@ public:
     }
 
     if (!ctx->needs_input_grad(1)) {
-      v_covars = torch::Tensor();
-    } else if (sparse_grad) {
-      v_covars = torch::sparse_coo_tensor({gaussian_ids.unsqueeze(0)}, v_covars,
-                                          covars.value().sizes());
-    }
-
-    if (!ctx->needs_input_grad(2)) {
       v_quats = torch::Tensor();
     } else if (sparse_grad) {
       v_quats = torch::sparse_coo_tensor({gaussian_ids.unsqueeze(0)}, v_quats,
-                                         quats.value().sizes());
+                                         quats.sizes());
     }
 
-    if (!ctx->needs_input_grad(3)) {
+    if (!ctx->needs_input_grad(2)) {
       v_scales = torch::Tensor();
     } else if (sparse_grad) {
       v_scales = torch::sparse_coo_tensor({gaussian_ids.unsqueeze(0)}, v_scales,
-                                          scales.value().sizes());
+                                          scales.sizes());
     }
 
-    if (!ctx->needs_input_grad(4)) {
+    if (!ctx->needs_input_grad(3)) {
       v_viewmats = torch::Tensor();
     }
 
-    return {v_means,         v_covars,        v_quats,         v_scales,
-            v_viewmats,      torch::Tensor(), torch::Tensor(), torch::Tensor(),
+    return {v_means,         v_quats,         v_scales,        v_viewmats,
             torch::Tensor(), torch::Tensor(), torch::Tensor(), torch::Tensor(),
-            torch::Tensor(), torch::Tensor(), torch::Tensor()};
+            torch::Tensor(), torch::Tensor(), torch::Tensor(), torch::Tensor(),
+            torch::Tensor(), torch::Tensor()};
   }
 };
 
@@ -179,8 +167,8 @@ fully_fused_projection(Tensor means,    // [N, 3]
   Ks = Ks.contiguous();
 
   auto outputs = FullyFusedProjectionPacked::apply(
-      means, at::nullopt, quats, scales, viewmats, Ks, width, height, eps2d,
-      near_plane, far_plane, radius_clip, sparse_grad, calc_compensations);
+      means, quats, scales, viewmats, Ks, width, height, eps2d, near_plane,
+      far_plane, radius_clip, sparse_grad, calc_compensations);
   return std::make_tuple(outputs[0], outputs[1], outputs[2], outputs[3],
                          outputs[4], outputs[5], outputs[6]);
 }
