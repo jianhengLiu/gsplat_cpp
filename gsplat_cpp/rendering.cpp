@@ -18,13 +18,12 @@ rasterization(torch::Tensor means,           //[N, 3]
               torch::Tensor colors,          //[(C,) N, D] or [(C,) N, K, 3]
               const torch::Tensor &viewmats, //[C, 4, 4]
               const torch::Tensor &Ks,       //[C, 3, 3]
-              int width, int height, float near_plane, float far_plane,
-              float radius_clip, float eps2d, std::optional<int> sh_degree,
-              bool packed, int tile_size,
-              at::optional<torch::Tensor> backgrounds,
-              const std::string &render_mode, bool sparse_grad, bool absgrad,
-              const std::string &rasterize_mode, int channel_chunk,
-              bool distributed, const std::string &camera_model) {
+              int width, int height, const std::string &render_mode,
+              float near_plane, float far_plane, float radius_clip, float eps2d,
+              std::optional<int> sh_degree, bool packed, int tile_size,
+              at::optional<torch::Tensor> backgrounds, bool sparse_grad,
+              bool absgrad, const std::string &rasterize_mode,
+              int channel_chunk) {
   std::map<std::string, torch::Tensor> meta;
 
   auto N = means.size(0);
@@ -63,22 +62,19 @@ rasterization(torch::Tensor means,           //[N, 3]
                 "Invalid colors shape");
   }
 
-  if (absgrad) {
-    TORCH_CHECK(!distributed, "AbsGrad is not supported in distributed mode.");
-  }
-
   // Project Gaussians to 2D
   auto [camera_ids, gaussian_ids, radii, means2d, depths, conics,
         compensations] =
       fully_fused_projection(means, quats, scales, viewmats, Ks, width, height,
-                             eps2d, packed, near_plane, far_plane, radius_clip,
+                             eps2d, near_plane, far_plane, radius_clip, packed,
                              sparse_grad, (rasterize_mode == "antialiased"));
-
+  std::cout << gaussian_ids.sizes() << std::endl;
+  std::cout << means2d.sizes() << std::endl;
   opacities = opacities.index({gaussian_ids});
 
-  // if (compensations.defined()) {
-  //   opacities = opacities * compensations;
-  // }
+  if (compensations.defined()) {
+    opacities = opacities * compensations;
+  }
 
   // # global camera_ids
   meta["camera_ids"] = camera_ids;
@@ -195,13 +191,8 @@ rasterization(torch::Tensor means,           //[N, 3]
 
   if (render_mode == "ED" || render_mode == "RGB+ED") {
     render_colors = torch::cat(
-        {render_colors.index(
-             {torch::indexing::Slice(), torch::indexing::Slice(),
-              torch::indexing::Slice(), torch::indexing::Slice(0, -1)}),
-         render_colors.index({torch::indexing::Slice(),
-                              torch::indexing::Slice(),
-                              torch::indexing::Slice(), -1}) /
-             render_alphas.clamp_min(1e-10)},
+        {render_colors.slice(-1, 0, -1),
+         render_colors.slice(-1, -1) / render_alphas.clamp_min(1e-10f)},
         -1);
   }
 

@@ -20,8 +20,7 @@ public:
           torch::Tensor viewmats,                    // [C, 4, 4]
           torch::Tensor Ks,                          // [C, 3, 3]
           int width, int height, float eps2d, float near_plane, float far_plane,
-          float radius_clip, bool sparse_grad, bool calc_compensations,
-          const std::string &camera_model = "pinhole") {
+          float radius_clip, bool sparse_grad, bool calc_compensations) {
     auto camera_model_type = gsplat::CameraModelType::PINHOLE;
 
     auto [indptr, camera_ids, gaussian_ids, radii, means2d, depths, conics,
@@ -42,7 +41,7 @@ public:
     ctx->saved_data["scales"] = scales;
     if (!calc_compensations) {
       ctx->saved_data["compensations"] = at::nullopt;
-      compensations = torch::zeros({means2d.size(0)}, means.options());
+      compensations = torch::ones({means2d.size(0)}, means.options());
     } else {
       ctx->saved_data["compensations"] =
           at::optional<torch::Tensor>(compensations);
@@ -64,7 +63,6 @@ public:
     auto v_means2d = grad_outputs[3];
     auto v_depths = grad_outputs[4];
     auto v_conics = grad_outputs[5];
-    auto v_compensations = at::optional<torch::Tensor>(grad_outputs[6]);
 
     auto saved = ctx->get_saved_variables();
     auto camera_ids = saved[0];
@@ -86,6 +84,7 @@ public:
     bool sparse_grad = ctx->saved_data["sparse_grad"].toBool();
     int camera_model_type = ctx->saved_data["camera_model_type"].toInt();
 
+    auto v_compensations = at::optional<torch::Tensor>(grad_outputs[6]);
     if (compensations.has_value()) {
       v_compensations = v_compensations.value().contiguous();
     } else {
@@ -151,9 +150,9 @@ fully_fused_projection(Tensor means,    // [N, 3]
                        Tensor scales,   // [N, 3] or None
                        Tensor viewmats, // [C, 4, 4]
                        Tensor Ks,       // [C, 3, 3]
-                       int width, int height, float eps2d = 0.3,
-                       float near_plane = 0.01, float far_plane = 1e10,
-                       float radius_clip = 0.0, bool packed = false,
+                       int width, int height, float eps2d = 0.3f,
+                       float near_plane = 0.01f, float far_plane = 1e10f,
+                       float radius_clip = 0.0f, bool packed = false,
                        bool sparse_grad = false,
                        bool calc_compensations = false) {
   int C = viewmats.size(0);
