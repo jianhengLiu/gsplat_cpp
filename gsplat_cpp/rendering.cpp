@@ -68,8 +68,7 @@ rasterization(torch::Tensor means,           //[N, 3]
       fully_fused_projection(means, quats, scales, viewmats, Ks, width, height,
                              eps2d, near_plane, far_plane, radius_clip, packed,
                              sparse_grad, (rasterize_mode == "antialiased"));
-  std::cout << gaussian_ids.sizes() << std::endl;
-  std::cout << means2d.sizes() << std::endl;
+
   opacities = opacities.index({gaussian_ids});
 
   if (compensations.defined()) {
