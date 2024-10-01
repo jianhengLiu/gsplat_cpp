@@ -63,10 +63,6 @@ spherical_harmonics(int degrees_to_use,
   TORCH_CHECK(coeffs.size(-1) == 3,
               "coeffs must have size 3 in the last dimension");
 
-  // Make tensors contiguous
-  dirs = dirs.contiguous();
-  coeffs = coeffs.contiguous();
-
   if (masks.has_value()) {
     TORCH_CHECK(masks.value().sizes() == dirs.sizes().slice(0, dirs.dim() - 1),
                 "Shape mismatch between masks and dirs");
@@ -74,5 +70,6 @@ spherical_harmonics(int degrees_to_use,
   }
 
   // Call the custom autograd function
-  return SphericalHarmonics::apply(degrees_to_use, dirs, coeffs, masks);
+  return SphericalHarmonics::apply(degrees_to_use, dirs.contiguous(),
+                                   coeffs.contiguous(), masks);
 }
