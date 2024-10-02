@@ -157,10 +157,9 @@ rasterization(torch::Tensor means,           //[N, 3]
         }
     ) */
 
-  auto opt_absgrad =
-      absgrad ? at::optional<torch::Tensor>(torch::Tensor()) : at::nullopt;
+  auto means2d_absgrad =
+      absgrad ? torch::zeros_like(means2d).requires_grad_() : torch::Tensor();
 
-  std::cout << opt_absgrad.has_value() << std::endl;
   if (colors.size(-1) > channel_chunk) {
     int n_chunks = (colors.size(-1) + channel_chunk - 1) / channel_chunk;
     std::vector<torch::Tensor> render_colors_vec, render_alphas_vec;
@@ -179,7 +178,7 @@ rasterization(torch::Tensor means,           //[N, 3]
       auto [render_colors_, render_alphas_] = rasterize_to_pixels(
           means2d, conics, colors_chunk, opacities, width, height, tile_size,
           isect_offsets, flatten_ids, backgrounds_chunk, at::nullopt, packed,
-          opt_absgrad);
+          means2d_absgrad);
       render_colors_vec.push_back(render_colors_);
       render_alphas_vec.push_back(render_alphas_);
     }
@@ -189,12 +188,10 @@ rasterization(torch::Tensor means,           //[N, 3]
     std::tie(render_colors, render_alphas) =
         rasterize_to_pixels(means2d, conics, colors, opacities, width, height,
                             tile_size, isect_offsets, flatten_ids, backgrounds,
-                            at::nullopt, packed, opt_absgrad);
+                            at::nullopt, packed, means2d_absgrad);
   }
-  std::cout << absgrad << std::endl;
   if (absgrad) {
-    std::cout << opt_absgrad.value().sizes() << std::endl;
-    meta["absgrad"] = opt_absgrad.value();
+    meta["absgrad"] = means2d_absgrad;
   }
 
   if (render_mode == "ED" || render_mode == "RGB+ED") {

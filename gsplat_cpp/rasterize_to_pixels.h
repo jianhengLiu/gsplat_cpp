@@ -19,7 +19,7 @@ public:
           int width, int height, int tile_size,
           const torch::Tensor &isect_offsets, // [C, tile_height, tile_width]
           const torch::Tensor &flatten_ids,   // [n_isects]
-          const at::optional<torch::Tensor> &absgrad = at::nullopt);
+          const torch::Tensor &absgrad = torch::Tensor());
 
   static torch::autograd::tensor_list
   backward(torch::autograd::AutogradContext *ctx,
@@ -37,5 +37,4 @@ std::tuple<torch::Tensor, torch::Tensor> rasterize_to_pixels(
     at::optional<torch::Tensor> backgrounds = at::nullopt, // [C, channels]
     at::optional<torch::Tensor> masks =
         at::nullopt, // [C, tile_height, tile_width]
-    bool packed = false,
-    const at::optional<torch::Tensor> &absgrad = at::nullopt);
+    bool packed = false, const torch::Tensor &absgrad = torch::Tensor());

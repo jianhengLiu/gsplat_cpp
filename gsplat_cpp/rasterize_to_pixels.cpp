@@ -17,20 +17,19 @@ torch::autograd::tensor_list RasterizeToPixels::forward(
     int width, int height, int tile_size,
     const torch::Tensor &isect_offsets, // [C, tile_height, tile_width]
     const torch::Tensor &flatten_ids,   // [n_isects]
-    const at::optional<torch::Tensor> &absgrad) {
+    const torch::Tensor &absgrad) {
   auto [render_colors, render_alphas, last_ids] =
       gsplat::rasterize_to_pixels_fwd_tensor(
           means2d, conics, colors, opacities, backgrounds, masks, width, height,
           tile_size, isect_offsets, flatten_ids);
 
   ctx->save_for_backward({means2d, conics, colors, opacities, isect_offsets,
-                          flatten_ids, render_alphas, last_ids});
+                          flatten_ids, render_alphas, last_ids, absgrad});
   ctx->saved_data["backgrounds"] = backgrounds;
   ctx->saved_data["masks"] = masks;
   ctx->saved_data["width"] = width;
   ctx->saved_data["height"] = height;
   ctx->saved_data["tile_size"] = tile_size;
-  ctx->saved_data["absgrad"] = absgrad;
 
   // double to float
   render_alphas = render_alphas.to(torch::kFloat);
@@ -39,7 +38,7 @@ torch::autograd::tensor_list RasterizeToPixels::forward(
 
 torch::autograd::tensor_list
 RasterizeToPixels::backward(torch::autograd::AutogradContext *ctx,
-                             torch::autograd::tensor_list grad_outputs) {
+                            torch::autograd::tensor_list grad_outputs) {
   auto v_render_colors = grad_outputs[0];
   auto v_render_alphas = grad_outputs[1];
 
@@ -52,6 +51,7 @@ RasterizeToPixels::backward(torch::autograd::AutogradContext *ctx,
   auto flatten_ids = saved[5];
   auto render_alphas = saved[6];
   auto last_ids = saved[7];
+  auto absgrad = saved[8];
 
   auto backgrounds = ctx->saved_data["backgrounds"].toOptional<torch::Tensor>();
   auto masks = ctx->saved_data["masks"].toOptional<torch::Tensor>();
@@ -59,21 +59,13 @@ RasterizeToPixels::backward(torch::autograd::AutogradContext *ctx,
   int width = ctx->saved_data["width"].toInt();
   int height = ctx->saved_data["height"].toInt();
   int tile_size = ctx->saved_data["tile_size"].toInt();
-  auto absgrad = ctx->saved_data["absgrad"].toOptional<torch::Tensor>();
-  std::cout << absgrad.has_value() << std::endl;
 
   auto [v_means2d_abs, v_means2d, v_conics, v_colors, v_opacities] =
       gsplat::rasterize_to_pixels_bwd_tensor(
           means2d, conics, colors, opacities, backgrounds, masks, width, height,
           tile_size, isect_offsets, flatten_ids, render_alphas, last_ids,
           v_render_colors.contiguous(), v_render_alphas.contiguous(),
-          absgrad.has_value());
-
-  std::cout << "v_means2d_abs.sizes(): " << v_means2d_abs.sizes() << std::endl;
-  std::cout << absgrad.has_value() << std::endl;
-  if (absgrad.has_value()) {
-    absgrad = v_means2d_abs.clone();
-  }
+          absgrad.defined());
 
   torch::Tensor v_backgrounds = torch::Tensor();
   if (backgrounds.has_value()) {
@@ -92,7 +84,7 @@ RasterizeToPixels::backward(torch::autograd::AutogradContext *ctx,
       torch::Tensor(), // tile_size
       torch::Tensor(), // isect_offsets
       torch::Tensor(), // flatten_ids
-      torch::Tensor()  // absgrad
+      v_means2d_abs    // absgrad
   };
 }
 
@@ -106,7 +98,7 @@ std::tuple<torch::Tensor, torch::Tensor> rasterize_to_pixels(
     const torch::Tensor &flatten_ids,        // [n_isects]
     at::optional<torch::Tensor> backgrounds, // [C, channels]
     at::optional<torch::Tensor> masks,       // [C, tile_height, tile_width]
-    bool packed, const at::optional<torch::Tensor> &absgrad) {
+    bool packed, const torch::Tensor &absgrad) {
   int C = isect_offsets.size(0);
   auto device = means2d.device();
 
