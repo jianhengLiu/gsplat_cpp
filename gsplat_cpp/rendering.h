@@ -1,6 +1,5 @@
 #pragma once
 
-#include <optional>
 #include <torch/torch.h>
 #include <tuple>
 
@@ -19,7 +18,7 @@ rasterization(
     const std::string &render_mode =
         "RGB", //["RGB", "D", "ED", "RGB+D", "RGB+ED"]
     float near_plane = 0.01f, float far_plane = 1e10f, float radius_clip = 0.0f,
-    float eps2d = 0.3f, std::optional<int> sh_degree = std::nullopt,
+    float eps2d = 0.3f, at::optional<int> sh_degree = at::nullopt,
     bool packed = true, int tile_size = 16,
     at::optional<torch::Tensor> backgrounds = at::nullopt,
 

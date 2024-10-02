@@ -1,13 +1,12 @@
 #include "rendering.h"
 #include <map>
-#include <optional>
 #include <string>
 #include <torch/torch.h>
 #include <tuple>
 
 #include "fully_fused_projection.hpp"
 #include "isect_tiles.hpp"
-#include "rasterize_to_pixels.hpp"
+#include "rasterize_to_pixels.h"
 #include "spherical_harmonics.hpp"
 namespace gsplat_cpp {
 std::tuple<torch::Tensor, torch::Tensor, std::map<std::string, torch::Tensor>>
@@ -20,7 +19,7 @@ rasterization(torch::Tensor means,           //[N, 3]
               const torch::Tensor &Ks,       //[C, 3, 3]
               int width, int height, const std::string &render_mode,
               float near_plane, float far_plane, float radius_clip, float eps2d,
-              std::optional<int> sh_degree, bool packed, int tile_size,
+              at::optional<int> sh_degree, bool packed, int tile_size,
               at::optional<torch::Tensor> backgrounds, bool sparse_grad,
               bool absgrad, const std::string &rasterize_mode,
               int channel_chunk) {
@@ -158,6 +157,10 @@ rasterization(torch::Tensor means,           //[N, 3]
         }
     ) */
 
+  auto opt_absgrad =
+      absgrad ? at::optional<torch::Tensor>(torch::Tensor()) : at::nullopt;
+
+  std::cout << opt_absgrad.has_value() << std::endl;
   if (colors.size(-1) > channel_chunk) {
     int n_chunks = (colors.size(-1) + channel_chunk - 1) / channel_chunk;
     std::vector<torch::Tensor> render_colors_vec, render_alphas_vec;
@@ -173,19 +176,25 @@ rasterization(torch::Tensor means,           //[N, 3]
                      torch::indexing::Slice(i * channel_chunk,
                                             (i + 1) * channel_chunk)})
               : torch::Tensor();
-      auto [render_colors_, render_alphas_] =
-          rasterize_to_pixels(means2d, conics, colors_chunk, opacities, width,
-                              height, tile_size, isect_offsets, flatten_ids,
-                              backgrounds_chunk, at::nullopt, packed, absgrad);
+      auto [render_colors_, render_alphas_] = rasterize_to_pixels(
+          means2d, conics, colors_chunk, opacities, width, height, tile_size,
+          isect_offsets, flatten_ids, backgrounds_chunk, at::nullopt, packed,
+          opt_absgrad);
       render_colors_vec.push_back(render_colors_);
       render_alphas_vec.push_back(render_alphas_);
     }
     render_colors = torch::cat(render_colors_vec, -1);
     render_alphas = render_alphas_vec[0];
   } else {
-    std::tie(render_colors, render_alphas) = rasterize_to_pixels(
-        means2d, conics, colors, opacities, width, height, tile_size,
-        isect_offsets, flatten_ids, backgrounds, at::nullopt, packed, absgrad);
+    std::tie(render_colors, render_alphas) =
+        rasterize_to_pixels(means2d, conics, colors, opacities, width, height,
+                            tile_size, isect_offsets, flatten_ids, backgrounds,
+                            at::nullopt, packed, opt_absgrad);
+  }
+  std::cout << absgrad << std::endl;
+  if (absgrad) {
+    std::cout << opt_absgrad.value().sizes() << std::endl;
+    meta["absgrad"] = opt_absgrad.value();
   }
 
   if (render_mode == "ED" || render_mode == "RGB+ED") {

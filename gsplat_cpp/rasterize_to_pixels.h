@@ -1,0 +1,41 @@
+#pragma once
+
+#include <torch/torch.h>
+
+using namespace torch;
+using namespace std;
+
+struct RasterizeToPixels : public torch::autograd::Function<RasterizeToPixels> {
+public:
+  static torch::autograd::tensor_list
+  forward(torch::autograd::AutogradContext *ctx,
+          const torch::Tensor &means2d,                   // [C, N, 2]
+          const torch::Tensor &conics,                    // [C, N, 3]
+          const torch::Tensor &colors,                    // [C, N, D]
+          const torch::Tensor &opacities,                 // [C, N]
+          const at::optional<torch::Tensor> &backgrounds, // [C, D], Optional
+          const at::optional<torch::Tensor>
+              &masks, // [C, tile_height, tile_width], Optional
+          int width, int height, int tile_size,
+          const torch::Tensor &isect_offsets, // [C, tile_height, tile_width]
+          const torch::Tensor &flatten_ids,   // [n_isects]
+          const at::optional<torch::Tensor> &absgrad = at::nullopt);
+
+  static torch::autograd::tensor_list
+  backward(torch::autograd::AutogradContext *ctx,
+           torch::autograd::tensor_list grad_outputs);
+};
+
+std::tuple<torch::Tensor, torch::Tensor> rasterize_to_pixels(
+    const torch::Tensor &means2d,   // [C, N, 2] or [nnz, 2]
+    const torch::Tensor &conics,    // [C, N, 3] or [nnz, 3]
+    torch::Tensor &colors,          // [C, N, channels] or [nnz, channels]
+    const torch::Tensor &opacities, // [C, N] or [nnz]
+    int image_width, int image_height, int tile_size,
+    const torch::Tensor &isect_offsets, // [C, tile_height, tile_width]
+    const torch::Tensor &flatten_ids,   // [n_isects]
+    at::optional<torch::Tensor> backgrounds = at::nullopt, // [C, channels]
+    at::optional<torch::Tensor> masks =
+        at::nullopt, // [C, tile_height, tile_width]
+    bool packed = false,
+    const at::optional<torch::Tensor> &absgrad = at::nullopt);
