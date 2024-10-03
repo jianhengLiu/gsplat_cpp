@@ -13,7 +13,7 @@ set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} ${NVCC_FLAGS}")
 find_package(Torch REQUIRED)
 
 include_directories(gsplat_cpp submodules/gsplat
-                    submodules/gsplat/gsplat/cuda/third_party/glm)
+                    submodules/gsplat/gsplat/cuda/csrc/third_party/glm)
 
 file(GLOB_RECURSE GSPLAT_SOURCES submodules/gsplat/gsplat/cuda/*.cu)
 
