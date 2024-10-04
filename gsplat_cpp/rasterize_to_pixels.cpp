@@ -134,14 +134,14 @@ std::tuple<torch::Tensor, torch::Tensor> rasterize_to_pixels(
   if (std::find(supported_channels.begin(), supported_channels.end(),
                 channels) == supported_channels.end()) {
     padded_channels = (1 << (int(std::log2(channels)) + 1)) - channels;
-    colors = torch::cat(
-        {colors, torch::zeros({colors.size(0), colors.size(1), padded_channels},
-                              device)});
+    auto color_sizes = colors.sizes().slice(0, -1).vec();
+    color_sizes.emplace_back(padded_channels);
+    colors = torch::cat({colors, torch::zeros(color_sizes, device)}, -1);
     if (backgrounds.has_value()) {
+      auto backgrounds_sizes = backgrounds.value().sizes().slice(0, -1).vec();
+      backgrounds_sizes.emplace_back(padded_channels);
       backgrounds = torch::cat(
-          {backgrounds.value(),
-           torch::zeros({backgrounds.value().size(0), padded_channels},
-                        device)});
+          {backgrounds.value(), torch::zeros(backgrounds_sizes, device)});
     }
   }
 
