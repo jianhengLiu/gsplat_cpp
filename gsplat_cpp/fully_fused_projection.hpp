@@ -1,9 +1,6 @@
 #pragma once
 
 #include <gsplat/cuda/csrc/bindings.h>
-#include <optional>
-#include <torch/torch.h>
-#include <tuple>
 
 using namespace torch;
 using namespace std;

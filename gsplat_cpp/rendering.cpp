@@ -10,13 +10,13 @@
 #include "spherical_harmonics.hpp"
 namespace gsplat_cpp {
 std::tuple<torch::Tensor, torch::Tensor, std::map<std::string, torch::Tensor>>
-rasterization(torch::Tensor means,           //[N, 3]
-              torch::Tensor quats,           // [N, 4]
-              torch::Tensor scales,          // [N, 3]
-              torch::Tensor opacities,       // [N]
-              torch::Tensor colors,          //[(C,) N, D] or [(C,) N, K, 3]
-              const torch::Tensor &viewmats, //[C, 4, 4]
-              const torch::Tensor &Ks,       //[C, 3, 3]
+rasterization(const torch::Tensor &means,     //[N, 3]
+              const torch::Tensor &quats,     // [N, 4]
+              const torch::Tensor &scales,    // [N, 3]
+              const torch::Tensor &opacities, // [N]
+              const torch::Tensor &colors,    //[(C,) N, D] or [(C,) N, K, 3]
+              const torch::Tensor &viewmats,  //[C, 4, 4]
+              const torch::Tensor &Ks,        //[C, 3, 3]
               int width, int height, const std::string &render_mode,
               float near_plane, float far_plane, float radius_clip, float eps2d,
               at::optional<int> sh_degree, bool packed, int tile_size,
@@ -62,16 +62,17 @@ rasterization(torch::Tensor means,           //[N, 3]
   }
 
   // Project Gaussians to 2D
+  bool cal_compensations = rasterize_mode == "antialiased";
   auto [camera_ids, gaussian_ids, radii, means2d, depths, conics,
         compensations] =
       fully_fused_projection(means, quats, scales, viewmats, Ks, width, height,
                              eps2d, near_plane, far_plane, radius_clip, packed,
-                             sparse_grad, (rasterize_mode == "antialiased"));
+                             sparse_grad, cal_compensations);
 
-  opacities = opacities.index({gaussian_ids});
+  auto proj_opacities = opacities.index({gaussian_ids});
 
-  if (compensations.defined()) {
-    opacities = opacities * compensations;
+  if (cal_compensations) {
+    proj_opacities = proj_opacities * compensations;
   }
 
   // # global camera_ids
@@ -82,14 +83,15 @@ rasterization(torch::Tensor means,           //[N, 3]
   meta["means2d"] = means2d;
   meta["depths"] = depths;
   meta["conics"] = conics;
-  meta["opacities"] = opacities;
+  meta["opacities"] = proj_opacities;
 
   // Turn colors into [C, N, D] or [nnz, D] to pass into rasterize_to_pixels()
+  torch::Tensor proj_colors;
   if (!sh_degree.has_value()) {
     if (colors.dim() == 2) {
-      colors = colors.index({gaussian_ids});
+      proj_colors = colors.index({gaussian_ids});
     } else {
-      colors = colors.index({camera_ids, gaussian_ids});
+      proj_colors = colors.index({camera_ids, gaussian_ids});
     }
   } else {
     auto camtoworlds = torch::inverse(viewmats);
@@ -106,22 +108,22 @@ rasterization(torch::Tensor means,           //[N, 3]
       shs = colors.index({camera_ids, gaussian_ids, torch::indexing::Slice(),
                           torch::indexing::Slice()});
     }
-    colors = spherical_harmonics(sh_degree.value(), dirs, shs, masks);
+    proj_colors = spherical_harmonics(sh_degree.value(), dirs, shs, masks);
 
-    colors = torch::clamp_min(colors + 0.5, 0.0);
+    proj_colors = torch::clamp_min(proj_colors + 0.5, 0.0);
   }
 
   // Rasterize to pixels
   torch::Tensor render_colors, render_alphas;
   if (render_mode == "RGB+D" || render_mode == "RGB+ED") {
-    colors = torch::cat({colors, depths.unsqueeze(-1)}, -1);
+    proj_colors = torch::cat({proj_colors, depths.unsqueeze(-1)}, -1);
     if (backgrounds.has_value()) {
       backgrounds = torch::cat(
           {backgrounds.value(), torch::zeros({C, 1}, backgrounds->device())},
           -1);
     }
   } else if (render_mode == "D" || render_mode == "ED") {
-    colors = depths.unsqueeze(-1);
+    proj_colors = depths.unsqueeze(-1);
     if (backgrounds.has_value()) {
       backgrounds = torch::zeros({C, 1}, backgrounds->device());
     }
@@ -157,21 +159,21 @@ rasterization(torch::Tensor means,           //[N, 3]
   auto means2d_absgrad =
       absgrad ? torch::zeros_like(means2d).requires_grad_() : torch::Tensor();
 
-  if (colors.size(-1) > channel_chunk) {
-    int n_chunks = (colors.size(-1) + channel_chunk - 1) / channel_chunk;
+  if (proj_colors.size(-1) > channel_chunk) {
+    int n_chunks = (proj_colors.size(-1) + channel_chunk - 1) / channel_chunk;
     std::vector<torch::Tensor> render_colors_vec, render_alphas_vec;
     for (int i = 0; i < n_chunks; ++i) {
       auto colors_chunk =
-          colors.slice(-1, i * channel_chunk, (i + 1) * channel_chunk);
+          proj_colors.slice(-1, i * channel_chunk, (i + 1) * channel_chunk);
       auto backgrounds_chunk =
           backgrounds.has_value()
               ? at::optional<torch::Tensor>(backgrounds->slice(
                     -1, i * channel_chunk, (i + 1) * channel_chunk))
               : at::nullopt;
       auto [render_colors_, render_alphas_] = rasterize_to_pixels(
-          means2d, conics, colors_chunk, opacities, width, height, tile_size,
-          isect_offsets, flatten_ids, backgrounds_chunk, at::nullopt, packed,
-          means2d_absgrad);
+          means2d, conics, colors_chunk, proj_opacities, width, height,
+          tile_size, isect_offsets, flatten_ids, backgrounds_chunk, at::nullopt,
+          packed, means2d_absgrad);
       render_colors_vec.push_back(render_colors_);
       render_alphas_vec.push_back(render_alphas_);
     }
@@ -179,9 +181,9 @@ rasterization(torch::Tensor means,           //[N, 3]
     render_alphas = render_alphas_vec[0];
   } else {
     std::tie(render_colors, render_alphas) =
-        rasterize_to_pixels(means2d, conics, colors, opacities, width, height,
-                            tile_size, isect_offsets, flatten_ids, backgrounds,
-                            at::nullopt, packed, means2d_absgrad);
+        rasterize_to_pixels(means2d, conics, proj_colors, proj_opacities, width,
+                            height, tile_size, isect_offsets, flatten_ids,
+                            backgrounds, at::nullopt, packed, means2d_absgrad);
   }
   if (absgrad) {
     meta["absgrad"] = means2d_absgrad;
@@ -193,6 +195,9 @@ rasterization(torch::Tensor means,           //[N, 3]
          render_colors.slice(-1, -1) / render_alphas.clamp_min(1e-10f)},
         -1);
   }
+
+  // std::cout << "render_colors.max(): " << render_colors.slice(-1, 0, 3).max()
+  //           << std::endl;
 
   return std::make_tuple(render_colors, render_alphas, meta);
 }
