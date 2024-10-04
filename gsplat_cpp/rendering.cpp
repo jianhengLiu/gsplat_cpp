@@ -147,13 +147,10 @@ rasterization(torch::Tensor means,           //[N, 3]
 
   /* meta.update(
         {
-            "tile_width": tile_width,
-            "tile_height": tile_height,
-            "tiles_per_gauss": tiles_per_gauss,
             "isect_ids": isect_ids,
             "flatten_ids": flatten_ids,
             "isect_offsets": isect_offsets,
-            "tile_size": tile_size,
+              "tile_size": tile_size,
         }
     ) */
 
@@ -164,17 +161,13 @@ rasterization(torch::Tensor means,           //[N, 3]
     int n_chunks = (colors.size(-1) + channel_chunk - 1) / channel_chunk;
     std::vector<torch::Tensor> render_colors_vec, render_alphas_vec;
     for (int i = 0; i < n_chunks; ++i) {
-      auto colors_chunk = colors.index(
-          {torch::indexing::Slice(), torch::indexing::Slice(),
-           torch::indexing::Slice(),
-           torch::indexing::Slice(i * channel_chunk, (i + 1) * channel_chunk)});
+      auto colors_chunk =
+          colors.slice(-1, i * channel_chunk, (i + 1) * channel_chunk);
       auto backgrounds_chunk =
           backgrounds.has_value()
-              ? backgrounds->index(
-                    {torch::indexing::Slice(),
-                     torch::indexing::Slice(i * channel_chunk,
-                                            (i + 1) * channel_chunk)})
-              : torch::Tensor();
+              ? at::optional<torch::Tensor>(backgrounds->slice(
+                    -1, i * channel_chunk, (i + 1) * channel_chunk))
+              : at::nullopt;
       auto [render_colors_, render_alphas_] = rasterize_to_pixels(
           means2d, conics, colors_chunk, opacities, width, height, tile_size,
           isect_offsets, flatten_ids, backgrounds_chunk, at::nullopt, packed,
