@@ -1,12 +1,6 @@
 #pragma once
 
 #include <gsplat/cuda/csrc/bindings.h>
-#include <optional>
-#include <torch/torch.h>
-#include <tuple>
-
-using namespace torch;
-using namespace std;
 
 struct SphericalHarmonics
     : public torch::autograd::Function<SphericalHarmonics> {
@@ -49,8 +43,8 @@ public:
 
 torch::Tensor
 spherical_harmonics(int degrees_to_use,
-                    torch::Tensor dirs,   // [..., 3]
-                    torch::Tensor coeffs, // [..., K, 3]
+                    const torch::Tensor &dirs,   // [..., 3]
+                    const torch::Tensor &coeffs, // [..., K, 3]
                     at::optional<torch::Tensor> masks = at::nullopt) {
   // Check the input tensor shapes
   TORCH_CHECK((degrees_to_use + 1) * (degrees_to_use + 1) <= coeffs.size(-2),
