@@ -36,7 +36,8 @@ rasterization(const torch::Tensor &means,     //[N, 3]
   TORCH_CHECK(scales.sizes() == torch::IntArrayRef({N, 3}),
               "Invalid scales shape");
   TORCH_CHECK(opacities.sizes() == torch::IntArrayRef({N}),
-              "Invalid opacities shape");
+              "Invalid opacities shape", opacities.sizes(),
+              torch::IntArrayRef({N}));
   TORCH_CHECK(viewmats.sizes() == torch::IntArrayRef({C, 4, 4}),
               "Invalid viewmats shape");
   TORCH_CHECK(Ks.sizes() == torch::IntArrayRef({C, 3, 3}), "Invalid Ks shape");
