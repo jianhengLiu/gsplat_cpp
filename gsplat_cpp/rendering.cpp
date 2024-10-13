@@ -148,15 +148,6 @@ rasterization(const torch::Tensor &means,     //[N, 3]
   meta["height"] = torch::tensor({height});
   meta["n_cameras"] = torch::tensor({C});
 
-  /* meta.update(
-        {
-            "isect_ids": isect_ids,
-            "flatten_ids": flatten_ids,
-            "isect_offsets": isect_offsets,
-              "tile_size": tile_size,
-        }
-    ) */
-
   auto means2d_absgrad =
       absgrad ? torch::zeros_like(means2d).requires_grad_() : torch::Tensor();
 
@@ -196,9 +187,6 @@ rasterization(const torch::Tensor &means,     //[N, 3]
          render_colors.slice(-1, -1) / render_alphas.clamp_min(1e-10f)},
         -1);
   }
-
-  // std::cout << "render_colors.max(): " << render_colors.slice(-1, 0, 3).max()
-  //           << std::endl;
 
   return std::make_tuple(render_colors, render_alphas, meta);
 }
