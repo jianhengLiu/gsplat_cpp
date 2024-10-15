@@ -328,6 +328,7 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
         -1);
   }
 
+  meta["normal"] = normals;
   // # global camera_ids
   meta["camera_ids"] = camera_ids;
   // # local gaussian_ids
