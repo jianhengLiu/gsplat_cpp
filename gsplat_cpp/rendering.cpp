@@ -328,6 +328,15 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
         -1);
   }
 
+  render_normals =
+      render_normals.matmul(viewmats.inverse()
+                                .index({0, torch::indexing::Slice(0, 3),
+                                        torch::indexing::Slice(0, 3)})
+                                .t());
+
+  meta["render_normal"] = render_normals;
+  meta["render_median"] = render_median;
+
   meta["normal"] = normals;
   // # global camera_ids
   meta["camera_ids"] = camera_ids;
