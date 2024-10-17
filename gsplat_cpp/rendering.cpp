@@ -307,8 +307,7 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
     }
   }
 
-  auto means2d_absgrad =
-      absgrad ? torch::zeros_like(means2d).requires_grad_() : torch::Tensor();
+  auto means2d_absgrad = torch::zeros_like(means2d).requires_grad(absgrad);
 
   auto [render_colors, render_alphas, render_normals, render_distort,
         render_median] =

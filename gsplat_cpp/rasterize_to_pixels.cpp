@@ -242,7 +242,7 @@ RasterizeToPixels2DGS::backward(torch::autograd::AutogradContext *ctx,
           flatten_ids, render_colors, render_alphas, last_ids, median_ids,
           v_render_colors.contiguous(), v_render_alphas.contiguous(),
           v_render_normals.contiguous(), v_render_distort.contiguous(),
-          v_render_median.contiguous(), absgrad.defined());
+          v_render_median.contiguous(), absgrad.requires_grad());
   torch::cuda::synchronize();
 
   torch::Tensor v_backgrounds = torch::Tensor();
