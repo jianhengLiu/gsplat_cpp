@@ -344,8 +344,7 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
   meta["radii"] = radii;
   meta["means2d"] = means2d;
   meta["depths"] = depths;
-  meta["pt_opacities"] = pt_opacities;
-  meta["pt_colors"] = pt_colors;
+  meta["opacity"] = opacities;
 
   meta["tile_width"] = torch::tensor({tile_width});
   meta["tile_height"] = torch::tensor({tile_height});
