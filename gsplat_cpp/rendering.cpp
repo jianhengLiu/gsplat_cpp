@@ -277,7 +277,8 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
         means.index({gaussian_ids, torch::indexing::Slice()}) -
         camtoworlds.index({camera_ids, torch::indexing::Slice(0, 3), 3});
 
-    pt_colors = spherical_harmonics(sh_degree.value(), dirs, colors, radii > 0);
+    pt_colors =
+        spherical_harmonics(sh_degree.value(), dirs, pt_colors, radii > 0);
 
     pt_colors = torch::clamp_min(pt_colors + 0.5, 0.0);
   }
