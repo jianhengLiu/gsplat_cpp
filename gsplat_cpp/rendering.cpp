@@ -203,7 +203,8 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
                    float near_plane, float far_plane, float radius_clip,
                    float eps2d, at::optional<int> sh_degree, bool packed,
                    int tile_size, at::optional<torch::Tensor> backgrounds,
-                   bool sparse_grad, bool absgrad, bool distloss) {
+                   bool sparse_grad, bool absgrad, bool distloss,
+                   const torch::Tensor &sdf_normal) {
   std::map<std::string, torch::Tensor> meta;
 
   auto N = means.size(0);
@@ -231,11 +232,10 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
     // # treat colors as SH coefficients, should be in shape [N, K, 3] or [C, N,
     // K, 3] # Allowing for activating partial SH bands
     TORCH_CHECK(
-        (colors.dim() == 3 && colors.size(0) == N && colors.size(2) == 3) ||
-            (colors.dim() == 4 &&
-             colors.sizes().slice(0, 2) == torch::IntArrayRef({C, N}) &&
-             colors.size(3) == 3),
+        (colors.dim() == 3 && colors.size(0) == N && colors.size(2) == 3),
         "Invalid colors shape");
+    TORCH_CHECK((std::pow(sh_degree.value() + 1, 2) <= colors.size(1)),
+                "Invalid colors shape");
   } else {
     TORCH_CHECK((colors.dim() == 2 && colors.size(0) == N) ||
                     (colors.dim() == 3 &&
@@ -249,16 +249,13 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
       fully_fused_projection_2dgs(means, quats, scales, viewmats, Ks, width,
                                   height, eps2d, near_plane, far_plane,
                                   radius_clip, packed, sparse_grad);
+  auto pt_opacities = opacities.index_select(0, gaussian_ids);
 
-  auto pt_opacities = opacities.index({gaussian_ids});
-  auto densify = torch::zeros_like(
-      means2d,
-      torch::dtype(means.dtype()).requires_grad(true).device(means.device()));
+  auto densify =
+      torch::zeros_like(means2d, means.options().requires_grad(true));
 
-  auto tile_width =
-      static_cast<int>(std::ceil(width / static_cast<float>(tile_size)));
-  auto tile_height =
-      static_cast<int>(std::ceil(height / static_cast<float>(tile_size)));
+  auto tile_width = (int)(std::ceil(width / (float)tile_size));
+  auto tile_height = (int)(std::ceil(height / (float)tile_size));
   auto [tiles_per_gauss, isect_ids, flatten_ids] =
       isect_tiles(means2d, radii, depths, tile_size, tile_width, tile_height,
                   true, packed, C, camera_ids, gaussian_ids);
@@ -267,27 +264,20 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
 
   // Turn colors into [C, N, D] or [nnz, D] to pass into rasterize_to_pixels()
   torch::Tensor pt_colors;
-  if (!sh_degree.has_value()) {
-    if (colors.dim() == 2) {
-      pt_colors = colors.index({gaussian_ids});
-    } else {
-      pt_colors = colors.index({camera_ids, gaussian_ids});
-    }
+  if (!(!sh_degree.has_value() && (colors.dim() == 3))) {
+    pt_colors = colors.index_select(0, gaussian_ids);
   } else {
+    pt_colors =
+        colors.index({camera_ids, gaussian_ids, torch::indexing::Slice()});
+  }
+  if (sh_degree.has_value()) {
     auto camtoworlds = torch::inverse(viewmats);
 
     auto dirs =
         means.index({gaussian_ids, torch::indexing::Slice()}) -
         camtoworlds.index({camera_ids, torch::indexing::Slice(0, 3), 3});
-    torch::Tensor shs;
-    if (colors.dim() == 3) {
-      shs = colors.index(
-          {gaussian_ids, torch::indexing::Slice(), torch::indexing::Slice()});
-    } else {
-      shs = colors.index({camera_ids, gaussian_ids, torch::indexing::Slice(),
-                          torch::indexing::Slice()});
-    }
-    pt_colors = spherical_harmonics(sh_degree.value(), dirs, shs, radii > 0);
+
+    pt_colors = spherical_harmonics(sh_degree.value(), dirs, colors, radii > 0);
 
     pt_colors = torch::clamp_min(pt_colors + 0.5, 0.0);
   }
@@ -295,16 +285,13 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
   // Rasterize to pixels
   if (render_mode == "RGB+D" || render_mode == "RGB+ED") {
     pt_colors = torch::cat({pt_colors, depths.unsqueeze(-1)}, -1);
-    if (backgrounds.has_value()) {
-      backgrounds = torch::cat(
-          {backgrounds.value(), torch::zeros({C, 1}, backgrounds->device())},
-          -1);
-    }
   } else if (render_mode == "D" || render_mode == "ED") {
     pt_colors = depths.unsqueeze(-1);
-    if (backgrounds.has_value()) {
-      backgrounds = torch::zeros({C, 1}, backgrounds->device());
-    }
+  }
+
+  if (sdf_normal.defined()) {
+    pt_colors =
+        torch::cat({pt_colors, sdf_normal.index_select(0, gaussian_ids)}, -1);
   }
 
   auto means2d_absgrad = torch::zeros_like(means2d).requires_grad_(absgrad);
@@ -343,6 +330,8 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
   meta["gaussian_ids"] = gaussian_ids;
   meta["radii"] = radii;
   meta["means2d"] = means2d;
+  meta["gradient_2dgs"] =
+      densify; // This holds the gradient used for densification for 2dgs
   meta["depths"] = depths;
   meta["opacity"] = opacities;
 

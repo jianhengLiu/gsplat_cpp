@@ -315,19 +315,23 @@ rasterize_to_pixels_2dgs(
   static std::vector<int> supported_channels = {1,  2,  3,   4,   8,  16,
                                                 32, 64, 128, 256, 512};
   int padded_channels = 0;
-  auto pad_colors = colors;
+  torch::Tensor pad_colors;
   if (std::find(supported_channels.begin(), supported_channels.end(),
                 channels) == supported_channels.end()) {
     padded_channels = (1 << (int(std::log2(channels)) + 1)) - channels;
     auto color_sizes = colors.sizes().vec();
     color_sizes[color_sizes.size() - 1] = padded_channels;
-    pad_colors = torch::cat({colors, torch::empty(color_sizes, device)}, -1);
+    pad_colors =
+        torch::cat({colors, torch::empty(color_sizes, colors.options())}, -1);
     if (backgrounds.has_value()) {
-      auto backgrounds_sizes = backgrounds.value().sizes().slice(0, -1).vec();
-      backgrounds_sizes.emplace_back(padded_channels);
+      auto backgrounds_sizes = backgrounds.value().sizes().vec();
+      backgrounds_sizes[backgrounds_sizes.size() - 1] = padded_channels;
       backgrounds = torch::cat(
-          {backgrounds.value(), torch::zeros(backgrounds_sizes, device)});
+          {backgrounds.value(),
+           torch::empty(backgrounds_sizes, backgrounds.value().options())});
     }
+  } else {
+    pad_colors = colors;
   }
 
   int tile_height = isect_offsets.size(1);

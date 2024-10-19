@@ -43,5 +43,6 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
                    bool packed = true, int tile_size = 16,
                    at::optional<torch::Tensor> backgrounds = at::nullopt,
                    bool sparse_grad = false, bool absgrad = false,
-                   bool distloss = false);
+                   bool distloss = false,
+                   const torch::Tensor &sdf_normal = torch::Tensor());
 } // namespace gsplat_cpp
