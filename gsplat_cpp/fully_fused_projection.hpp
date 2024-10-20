@@ -188,10 +188,8 @@ public:
     auto [indptr, camera_ids, gaussian_ids, radii, means2d, depths,
           ray_transforms, normals] =
         gsplat::fully_fused_projection_packed_fwd_2dgs_tensor(
-            means,
-            quats,  // optional
-            scales, // optional
-            viewmats, Ks, width, height, near_plane, far_plane, radius_clip);
+            means, quats, scales, viewmats, Ks, width, height, near_plane,
+            far_plane, radius_clip);
 
     ctx->save_for_backward({camera_ids, gaussian_ids, means, quats, scales,
                             viewmats, Ks, ray_transforms});
@@ -243,8 +241,8 @@ public:
       // # the tensor but this requires the tensor to be leaf node only. And
       // # a customized optimizer would be needed in this case.
       v_means =
-          torch::sparse_coo_tensor({gaussian_ids.unsqueeze(0)}, v_means,
-                                   means.sizes(), {}, viewmats.numel() == 1);
+          torch::sparse_coo_tensor(gaussian_ids.unsqueeze(0), v_means,
+                                   means.sizes(), {}, viewmats.size(0) == 1);
     }
 
     if (!ctx->needs_input_grad(1)) {

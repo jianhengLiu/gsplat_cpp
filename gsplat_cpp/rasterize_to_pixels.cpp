@@ -65,7 +65,7 @@ RasterizeToPixels::backward(torch::autograd::AutogradContext *ctx,
           means2d, conics, colors, opacities, backgrounds, masks, width, height,
           tile_size, isect_offsets, flatten_ids, render_alphas, last_ids,
           v_render_colors.contiguous(), v_render_alphas.contiguous(),
-          absgrad.defined());
+          absgrad.requires_grad());
 
   torch::Tensor v_backgrounds = torch::Tensor();
   if (backgrounds.has_value()) {
@@ -199,8 +199,8 @@ torch::autograd::tensor_list RasterizeToPixels2DGS::forward(
 
   // double to float
   render_alphas = render_alphas.to(torch::kFloat);
-  return {render_colors, render_alphas.to(torch::kFloat), render_normals,
-          render_distort, render_median};
+  return {render_colors, render_alphas, render_normals, render_distort,
+          render_median};
 }
 
 torch::autograd::tensor_list
@@ -286,24 +286,24 @@ rasterize_to_pixels_2dgs(
   int C = isect_offsets.size(0);
   auto device = means2d.device();
 
-  int64_t nnz = means2d.size(0);
-  TORCH_CHECK(means2d.sizes() == torch::IntArrayRef({nnz, 2}),
-              "Invalid shape for means2d");
-  TORCH_CHECK(ray_transforms.sizes() == torch::IntArrayRef({nnz, 3, 3}),
-              "Invalid shape for conics");
-  TORCH_CHECK(colors.size(0) == nnz, "Invalid shape for colors", colors.size(0),
-              ", ", nnz);
-  TORCH_CHECK(opacities.sizes() == torch::IntArrayRef({nnz}),
-              "Invalid shape for opacities", opacities.sizes(), ", ", nnz);
+  int64_t nnz;
+  if (packed) {
+    nnz = means2d.size(0);
+    TORCH_CHECK(means2d.sizes() == torch::IntArrayRef({nnz, 2}),
+                "Invalid shape for means2d");
+    TORCH_CHECK(ray_transforms.sizes() == torch::IntArrayRef({nnz, 3, 3}),
+                "Invalid shape for conics");
+    TORCH_CHECK(colors.size(0) == nnz, "Invalid shape for colors",
+                colors.size(0), ", ", nnz);
+    TORCH_CHECK(opacities.sizes() == torch::IntArrayRef({nnz}),
+                "Invalid shape for opacities", opacities.sizes(), ", ", nnz);
+  }
 
   if (backgrounds.has_value()) {
     TORCH_CHECK(backgrounds.value().sizes() ==
                     torch::IntArrayRef({C, colors.size(-1)}),
                 "Invalid shape for backgrounds");
-  }
-  if (masks.has_value()) {
-    TORCH_CHECK(masks.value().sizes() == isect_offsets.sizes(),
-                "Invalid shape for masks");
+    backgrounds.value() = backgrounds.value().contiguous();
   }
 
   // Pad the channels to the nearest supported number if necessary

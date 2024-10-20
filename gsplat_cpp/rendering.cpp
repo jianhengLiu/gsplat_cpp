@@ -148,8 +148,7 @@ rasterization(const torch::Tensor &means,     //[N, 3]
   meta["height"] = torch::tensor({height});
   meta["n_cameras"] = torch::tensor({C});
 
-  auto means2d_absgrad =
-      absgrad ? torch::zeros_like(means2d).requires_grad_() : torch::Tensor();
+  auto means2d_absgrad = torch::zeros_like(means2d).requires_grad_(absgrad);
 
   if (pt_colors.size(-1) > channel_chunk) {
     int n_chunks = (pt_colors.size(-1) + channel_chunk - 1) / channel_chunk;
