@@ -279,10 +279,9 @@ fully_fused_projection_2dgs(Tensor means,    // [N, 3]
                             Tensor scales,   // [N, 3] or None
                             Tensor viewmats, // [C, 4, 4]
                             Tensor Ks,       // [C, 3, 3]
-                            int width, int height, float eps2d = 0.3f,
-                            float near_plane = 0.01f, float far_plane = 1e10f,
-                            float radius_clip = 0.0f, bool packed = false,
-                            bool sparse_grad = false) {
+                            int width, int height, float near_plane = 0.01f,
+                            float far_plane = 1e10f, float radius_clip = 0.0f,
+                            bool packed = false, bool sparse_grad = false) {
   int C = viewmats.size(0);
   int N = means.size(0);
   TORCH_CHECK(means.sizes() == torch::IntArrayRef({N, 3}),
