@@ -6,9 +6,65 @@
 
 #include "fully_fused_projection.hpp"
 #include "isect_tiles.hpp"
+#define LLOG_HEADER_ONLY
+#include "llog.h"
 #include "rasterize_to_pixels.h"
 #include "spherical_harmonics.hpp"
 namespace gsplat_cpp {
+
+torch::Tensor
+get_view_colors(const torch::Tensor &viewmats, const torch::Tensor &means,
+                const torch::Tensor &radii,
+                const torch::Tensor &colors, //[(C,) N, D] or [(C,) N, K, 3]
+                const torch::Tensor &camera_ids,
+                const torch::Tensor &gaussian_ids,
+                at::optional<int> sh_degree) {
+  // Turn colors into [C, N, D] or [nnz, D] to pass into rasterize_to_pixels()
+  torch::Tensor pt_colors;
+  if (!sh_degree.has_value()) {
+    if (colors.dim() == 2) {
+      pt_colors = colors.index({gaussian_ids});
+    } else {
+      pt_colors = colors.index({camera_ids, gaussian_ids});
+    }
+  } else {
+    auto camtoworlds = torch::inverse(viewmats);
+
+    auto dirs =
+        means.index({gaussian_ids, torch::indexing::Slice()}) -
+        camtoworlds.index({camera_ids, torch::indexing::Slice(0, 3), 3});
+
+    torch::Tensor shs;
+    if (colors.dim() == 3) {
+      shs = colors.index(
+          {gaussian_ids, torch::indexing::Slice(), torch::indexing::Slice()});
+    } else {
+      shs = colors.index({camera_ids, gaussian_ids, torch::indexing::Slice(),
+                          torch::indexing::Slice()});
+    }
+    pt_colors = spherical_harmonics(sh_degree.value(), dirs, shs, radii > 0);
+
+    pt_colors = torch::clamp_min(pt_colors + 0.5, 0.0);
+  }
+  return pt_colors;
+}
+
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
+tile_encode(const int &width, const int &height, const int &tile_size,
+            const torch::Tensor &means2d, const torch::Tensor &radii,
+            const torch::Tensor &depths, const bool &packed,
+            const int &camera_num, const torch::Tensor &camera_ids,
+            const torch::Tensor &gaussian_ids) {
+  auto tile_width = (int)(std::ceil(width / (float)tile_size));
+  auto tile_height = (int)(std::ceil(height / (float)tile_size));
+  auto [tiles_per_gauss, isect_ids, flatten_ids] =
+      isect_tiles(means2d, radii, depths, tile_size, tile_width, tile_height,
+                  true, packed, camera_num, camera_ids, gaussian_ids);
+  auto isect_offsets =
+      isect_offset_encode(isect_ids, camera_num, tile_width, tile_height);
+  return {isect_offsets, flatten_ids, isect_offsets};
+}
+
 std::tuple<torch::Tensor, torch::Tensor, std::map<std::string, torch::Tensor>>
 rasterization(const torch::Tensor &means,     //[N, 3]
               const torch::Tensor &quats,     // [N, 4]
@@ -23,6 +79,8 @@ rasterization(const torch::Tensor &means,     //[N, 3]
               at::optional<torch::Tensor> backgrounds, bool sparse_grad,
               bool absgrad, const std::string &rasterize_mode,
               int channel_chunk) {
+  static auto p_t_pre = llog::CreateTimer("pre");
+  p_t_pre->tic();
   std::map<std::string, torch::Tensor> meta;
 
   auto N = means.size(0);
@@ -62,6 +120,10 @@ rasterization(const torch::Tensor &means,     //[N, 3]
                 "Invalid colors shape");
   }
 
+  p_t_pre->toc_sum();
+  static auto p_t_proj = llog::CreateTimer("proj");
+  p_t_proj->tic();
+
   // Project Gaussians to 2D
   bool cal_compensations = rasterize_mode == "antialiased";
   auto [camera_ids, gaussian_ids, radii, means2d, depths, conics,
@@ -76,43 +138,24 @@ rasterization(const torch::Tensor &means,     //[N, 3]
     pt_opacities = pt_opacities * compensations;
   }
 
-  // # global camera_ids
-  meta["camera_ids"] = camera_ids;
-  // # local gaussian_ids
-  meta["gaussian_ids"] = gaussian_ids;
-  meta["radii"] = radii;
-  meta["means2d"] = means2d;
-  meta["depths"] = depths;
-  meta["conics"] = conics;
-  meta["opacities"] = pt_opacities;
+  p_t_proj->toc_sum();
+  static auto p_t_sh = llog::CreateTimer("sh");
+  p_t_sh->tic();
 
-  // Turn colors into [C, N, D] or [nnz, D] to pass into rasterize_to_pixels()
-  torch::Tensor pt_colors;
-  if (!sh_degree.has_value()) {
-    if (colors.dim() == 2) {
-      pt_colors = colors.index({gaussian_ids});
-    } else {
-      pt_colors = colors.index({camera_ids, gaussian_ids});
-    }
-  } else {
-    auto camtoworlds = torch::inverse(viewmats);
+  torch::Tensor pt_colors = get_view_colors(
+      viewmats, means, radii, colors, camera_ids, gaussian_ids, sh_degree);
 
-    auto dirs =
-        means.index({gaussian_ids, torch::indexing::Slice()}) -
-        camtoworlds.index({camera_ids, torch::indexing::Slice(0, 3), 3});
-    auto masks = radii > 0;
-    torch::Tensor shs;
-    if (colors.dim() == 3) {
-      shs = colors.index(
-          {gaussian_ids, torch::indexing::Slice(), torch::indexing::Slice()});
-    } else {
-      shs = colors.index({camera_ids, gaussian_ids, torch::indexing::Slice(),
-                          torch::indexing::Slice()});
-    }
-    pt_colors = spherical_harmonics(sh_degree.value(), dirs, shs, masks);
+  p_t_sh->toc_sum();
+  static auto p_t_tile = llog::CreateTimer("tile");
+  p_t_tile->tic();
 
-    pt_colors = torch::clamp_min(pt_colors + 0.5, 0.0);
-  }
+  auto [tiles_per_gauss, flatten_ids, isect_offsets] =
+      tile_encode(width, height, tile_size, means2d, radii, depths, packed, C,
+                  camera_ids, gaussian_ids);
+
+  p_t_tile->toc_sum();
+  static auto p_t_ras = llog::CreateTimer("ras");
+  p_t_ras->tic();
 
   // Rasterize to pixels
   torch::Tensor render_colors, render_alphas;
@@ -129,24 +172,6 @@ rasterization(const torch::Tensor &means,     //[N, 3]
       backgrounds = torch::zeros({C, 1}, backgrounds->device());
     }
   }
-
-  auto tile_width =
-      static_cast<int>(std::ceil(width / static_cast<float>(tile_size)));
-  auto tile_height =
-      static_cast<int>(std::ceil(height / static_cast<float>(tile_size)));
-  auto [tiles_per_gauss, isect_ids, flatten_ids] =
-      isect_tiles(means2d, radii, depths, tile_size, tile_width, tile_height,
-                  true, packed, C, camera_ids, gaussian_ids);
-  auto isect_offsets =
-      isect_offset_encode(isect_ids, C, tile_width, tile_height);
-
-  meta["tile_width"] = torch::tensor({tile_width});
-  meta["tile_height"] = torch::tensor({tile_height});
-  meta["tiles_per_gauss"] = tiles_per_gauss;
-  meta["isect_offsets"] = isect_offsets;
-  meta["width"] = torch::tensor({width});
-  meta["height"] = torch::tensor({height});
-  meta["n_cameras"] = torch::tensor({C});
 
   auto means2d_absgrad = torch::zeros_like(means2d).requires_grad_(absgrad);
 
@@ -186,7 +211,27 @@ rasterization(const torch::Tensor &means,     //[N, 3]
          render_colors.slice(-1, -1) / render_alphas.clamp_min(1e-10f)},
         -1);
   }
+  p_t_ras->toc_sum();
+  static auto p_t_meta = llog::CreateTimer("meta");
+  p_t_meta->tic();
 
+  // # global camera_ids
+  meta["camera_ids"] = camera_ids;
+  // # local gaussian_ids
+  meta["gaussian_ids"] = gaussian_ids;
+  meta["radii"] = radii;
+  meta["means2d"] = means2d;
+  meta["depths"] = depths;
+  meta["conics"] = conics;
+  meta["opacities"] = pt_opacities;
+  // meta["tile_width"] = torch::tensor({tile_width});
+  // meta["tile_height"] = torch::tensor({tile_height});
+  meta["tiles_per_gauss"] = tiles_per_gauss;
+  meta["isect_offsets"] = isect_offsets;
+  meta["width"] = torch::tensor({width});
+  meta["height"] = torch::tensor({height});
+  meta["n_cameras"] = torch::tensor({C});
+  p_t_meta->toc_sum();
   return std::make_tuple(render_colors, render_alphas, meta);
 }
 
@@ -200,10 +245,12 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
                    const torch::Tensor &Ks,       //[C, 3, 3]
                    int width, int height, const std::string &render_mode,
                    float near_plane, float far_plane, float radius_clip,
-                   float eps2d, at::optional<int> sh_degree, bool packed,
-                   int tile_size, at::optional<torch::Tensor> backgrounds,
-                   bool sparse_grad, bool absgrad, bool distloss,
+                   at::optional<int> sh_degree, bool packed, int tile_size,
+                   at::optional<torch::Tensor> backgrounds, bool sparse_grad,
+                   bool absgrad, bool distloss,
                    const torch::Tensor &sdf_normal) {
+  static auto p_t_pre = llog::CreateTimer("pre");
+  p_t_pre->tic();
   std::map<std::string, torch::Tensor> meta;
 
   auto N = means.size(0);
@@ -242,45 +289,36 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
                 "Invalid colors shape");
   }
 
+  p_t_pre->toc_sum();
+  static auto p_t_proj = llog::CreateTimer("proj");
+  p_t_proj->tic();
+
   // # Compute Ray-Splat intersection transformation.
   auto [camera_ids, gaussian_ids, radii, means2d, depths, ray_transforms,
         normals] =
       fully_fused_projection_2dgs(means, quats, scales, viewmats, Ks, width,
-                                  height, eps2d, near_plane, far_plane,
-                                  radius_clip, packed, sparse_grad);
-  auto pt_opacities = opacities.index_select(0, gaussian_ids);
+                                  height, near_plane, far_plane, radius_clip,
+                                  packed, sparse_grad);
+  auto pt_opacities = opacities.index({gaussian_ids});
 
-  auto densify =
-      torch::zeros_like(means2d, means.options().requires_grad(true));
+  p_t_proj->toc_sum();
+  static auto p_t_sh = llog::CreateTimer("sh");
+  p_t_sh->tic();
 
-  auto tile_width = (int)(std::ceil(width / (float)tile_size));
-  auto tile_height = (int)(std::ceil(height / (float)tile_size));
-  auto [tiles_per_gauss, isect_ids, flatten_ids] =
-      isect_tiles(means2d, radii, depths, tile_size, tile_width, tile_height,
-                  true, packed, C, camera_ids, gaussian_ids);
-  auto isect_offsets =
-      isect_offset_encode(isect_ids, C, tile_width, tile_height);
+  torch::Tensor pt_colors = get_view_colors(
+      viewmats, means, radii, colors, camera_ids, gaussian_ids, sh_degree);
 
-  // Turn colors into [C, N, D] or [nnz, D] to pass into rasterize_to_pixels()
-  torch::Tensor pt_colors;
-  if (!(!sh_degree.has_value() && (colors.dim() == 3))) {
-    pt_colors = colors.index_select(0, gaussian_ids);
-  } else {
-    pt_colors =
-        colors.index({camera_ids, gaussian_ids, torch::indexing::Slice()});
-  }
-  if (sh_degree.has_value()) {
-    auto camtoworlds = torch::inverse(viewmats);
+  p_t_sh->toc_sum();
+  static auto p_t_tile = llog::CreateTimer("tile");
+  p_t_tile->tic();
 
-    auto dirs =
-        means.index({gaussian_ids, torch::indexing::Slice()}) -
-        camtoworlds.index({camera_ids, torch::indexing::Slice(0, 3), 3});
+  auto [tiles_per_gauss, flatten_ids, isect_offsets] =
+      tile_encode(width, height, tile_size, means2d, radii, depths, packed, C,
+                  camera_ids, gaussian_ids);
 
-    pt_colors =
-        spherical_harmonics(sh_degree.value(), dirs, pt_colors, radii > 0);
-
-    pt_colors = torch::clamp_min(pt_colors + 0.5, 0.0);
-  }
+  p_t_tile->toc_sum();
+  static auto p_t_ras = llog::CreateTimer("ras");
+  p_t_ras->tic();
 
   // Rasterize to pixels
   if (render_mode == "RGB+D" || render_mode == "RGB+ED") {
@@ -295,7 +333,8 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
   }
 
   auto means2d_absgrad = torch::zeros_like(means2d).requires_grad_(absgrad);
-
+  auto densify =
+      torch::zeros_like(means2d, means.options().requires_grad(true));
   auto [render_colors, render_alphas, render_normals, render_distort,
         render_median] =
       rasterize_to_pixels_2dgs(means2d, ray_transforms, pt_colors, pt_opacities,
@@ -320,6 +359,10 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
                                         torch::indexing::Slice(0, 3)})
                                 .t());
 
+  p_t_ras->toc_sum();
+  static auto p_t_meta = llog::CreateTimer("meta");
+  p_t_meta->tic();
+
   meta["render_normal"] = render_normals;
   meta["render_median"] = render_median;
 
@@ -335,14 +378,15 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
   meta["depths"] = depths;
   meta["opacity"] = opacities;
 
-  meta["tile_width"] = torch::tensor({tile_width});
-  meta["tile_height"] = torch::tensor({tile_height});
+  // meta["tile_width"] = torch::tensor({tile_width});
+  // meta["tile_height"] = torch::tensor({tile_height});
   meta["tiles_per_gauss"] = tiles_per_gauss;
   meta["isect_offsets"] = isect_offsets;
   meta["width"] = torch::tensor({width});
   meta["height"] = torch::tensor({height});
   meta["n_cameras"] = torch::tensor({C});
 
+  p_t_meta->toc_sum();
   return std::make_tuple(render_colors, render_alphas, meta);
 }
 } // namespace gsplat_cpp

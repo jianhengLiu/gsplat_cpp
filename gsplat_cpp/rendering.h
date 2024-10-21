@@ -38,7 +38,7 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
                    const std::string &render_mode =
                        "RGB", //["RGB", "D", "ED", "RGB+D", "RGB+ED"]
                    float near_plane = 0.01f, float far_plane = 1e10f,
-                   float radius_clip = 0.0f, float eps2d = 0.3f,
+                   float radius_clip = 0.0f,
                    at::optional<int> sh_degree = at::nullopt,
                    bool packed = true, int tile_size = 16,
                    at::optional<torch::Tensor> backgrounds = at::nullopt,
