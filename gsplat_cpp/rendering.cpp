@@ -248,7 +248,7 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
                    at::optional<int> sh_degree, bool packed, int tile_size,
                    at::optional<torch::Tensor> backgrounds, bool sparse_grad,
                    bool absgrad, bool distloss,
-                   const torch::Tensor &sdf_normal) {
+                   const std::vector<torch::Tensor> &attributes) {
   static auto p_t_pre = llog::CreateTimer("pre");
   p_t_pre->tic();
   std::map<std::string, torch::Tensor> meta;
@@ -327,9 +327,13 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
     pt_colors = depths.unsqueeze(-1);
   }
 
-  if (sdf_normal.defined()) {
-    pt_colors =
-        torch::cat({pt_colors, sdf_normal.index_select(0, gaussian_ids)}, -1);
+  int attri_channels = 0;
+  for (const auto &atrribute : attributes) {
+    if (atrribute.defined()) {
+      pt_colors =
+          torch::cat({pt_colors, atrribute.index_select(0, gaussian_ids)}, -1);
+      attri_channels += atrribute.size(1);
+    }
   }
 
   auto means2d_absgrad = torch::zeros_like(means2d).requires_grad_(absgrad);
@@ -347,12 +351,22 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
   }
 
   if (render_mode == "ED" || render_mode == "RGB+ED") {
-    render_colors = torch::cat(
-        {render_colors.slice(-1, 0, -1),
-         render_colors.slice(-1, -1) / render_alphas.clamp_min(1e-10f)},
-        -1);
+    if (attri_channels > 0) {
+      // TODO: adapt for multi attributes
+      render_colors = torch::cat(
+          {render_colors.slice(-1, 0, 3),
+           render_colors.slice(-1, 3, 4) / render_alphas.clamp_min(1e-10f),
+           render_colors.slice(-1, 4)},
+          -1);
+    } else {
+      render_colors = torch::cat(
+          {render_colors.slice(-1, 0, -1),
+           render_colors.slice(-1, -1) / render_alphas.clamp_min(1e-10f)},
+          -1);
+    }
   }
 
+  // transform normal to world space
   render_normals =
       render_normals.matmul(viewmats.inverse()
                                 .index({0, torch::indexing::Slice(0, 3),
@@ -366,6 +380,7 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
   meta["render_normal"] = render_normals;
   meta["render_median"] = render_median;
 
+  // gs normal in camera space
   meta["normal"] = normals;
   // # global camera_ids
   meta["camera_ids"] = camera_ids;
