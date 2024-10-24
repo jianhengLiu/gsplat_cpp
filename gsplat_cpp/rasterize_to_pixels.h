@@ -2,9 +2,6 @@
 
 #include <torch/torch.h>
 
-using namespace torch;
-using namespace std;
-
 struct RasterizeToPixels : public torch::autograd::Function<RasterizeToPixels> {
 public:
   static torch::autograd::tensor_list

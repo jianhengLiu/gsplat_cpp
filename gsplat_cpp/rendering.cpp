@@ -1,10 +1,8 @@
 #include "rendering.h"
 #include <map>
 #include <string>
-#include <torch/torch.h>
-#include <tuple>
 
-#include "fully_fused_projection.hpp"
+#include "fully_fused_projection.h"
 #include "isect_tiles.hpp"
 #define LLOG_HEADER_ONLY
 #include "llog.h"

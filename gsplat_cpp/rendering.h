@@ -5,6 +5,20 @@
 
 namespace gsplat_cpp {
 
+torch::Tensor
+get_view_colors(const torch::Tensor &viewmats, const torch::Tensor &means,
+                const torch::Tensor &radii,
+                const torch::Tensor &colors, //[(C,) N, D] or [(C,) N, K, 3]
+                const torch::Tensor &camera_ids,
+                const torch::Tensor &gaussian_ids, at::optional<int> sh_degree);
+
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
+tile_encode(const int &width, const int &height, const int &tile_size,
+            const torch::Tensor &means2d, const torch::Tensor &radii,
+            const torch::Tensor &depths, const bool &packed,
+            const int &camera_num, const torch::Tensor &camera_ids,
+            const torch::Tensor &gaussian_ids);
+
 std::tuple<torch::Tensor, torch::Tensor, std::map<std::string, torch::Tensor>>
 rasterization(
     const torch::Tensor &means,     //[N, 3]
