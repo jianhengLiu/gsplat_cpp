@@ -337,8 +337,8 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
   auto means2d_absgrad = torch::zeros_like(means2d).requires_grad_(absgrad);
   auto densify =
       torch::zeros_like(means2d, means.options().requires_grad(true));
-  auto [render_colors, render_alphas, render_normals, render_distort,
-        render_median] =
+  auto [render_colors, render_depths, render_alphas, render_normals,
+        render_distort, render_median] =
       rasterize_to_pixels_2dgs(means2d, ray_transforms, pt_colors, pt_opacities,
                                normals, densify, width, height, tile_size,
                                isect_offsets, flatten_ids, backgrounds,
@@ -351,16 +351,21 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
   if (render_mode == "ED" || render_mode == "RGB+ED") {
     if (attri_channels > 0) {
       // TODO: adapt for multi attributes
-      render_colors = torch::cat(
-          {render_colors.slice(-1, 0, 3),
-           render_colors.slice(-1, 3, 4) / render_alphas.clamp_min(1e-10f),
-           render_colors.slice(-1, 4)},
-          -1);
+      // render_colors = torch::cat(
+      //     {render_colors.slice(-1, 0, 3),
+      //      render_colors.slice(-1, 3, 4) / render_alphas.clamp_min(1e-10f),
+      //      render_colors.slice(-1, 4)},
+      //     -1);
+      render_colors =
+          torch::cat({render_colors.slice(-1, 0, 3),
+                      render_depths / render_alphas.clamp_min(
+                                          1e-10f), // only for mean depth
+                      render_colors.slice(-1, 4)},
+                     -1);
     } else {
       render_colors = torch::cat(
-          {render_colors.slice(-1, 0, -1),
-           render_colors.slice(-1, -1) / render_alphas.clamp_min(1e-10f)},
-          -1);
+          {render_colors, render_depths / render_alphas.clamp_min(1e-10f)},
+          -1); // only for mean depth
     }
   }
 

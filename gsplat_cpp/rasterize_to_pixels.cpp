@@ -182,15 +182,16 @@ torch::autograd::tensor_list RasterizeToPixels2DGS::forward(
     const torch::Tensor &isect_offsets, // [C, tile_height, tile_width]
     const torch::Tensor &flatten_ids,   // [n_isects]
     const torch::Tensor &absgrad, const bool &distloss) {
-  auto [render_colors, render_alphas, render_normals, render_distort,
-        render_median, last_ids, median_ids] =
+  auto [render_colors, render_depths, render_alphas, render_normals,
+        render_distort, render_median, last_ids, median_ids] =
       gsplat::rasterize_to_pixels_fwd_2dgs_tensor(
           means2d, ray_transforms, colors, opacities, normals, backgrounds,
           masks, width, height, tile_size, isect_offsets, flatten_ids);
 
   ctx->save_for_backward({means2d, ray_transforms, colors, opacities, normals,
                           densify, isect_offsets, flatten_ids, render_colors,
-                          render_alphas, last_ids, median_ids, absgrad});
+                          render_depths, render_alphas, last_ids, median_ids,
+                          absgrad});
   ctx->saved_data["backgrounds"] = backgrounds;
   ctx->saved_data["masks"] = masks;
   ctx->saved_data["width"] = width;
@@ -198,19 +199,20 @@ torch::autograd::tensor_list RasterizeToPixels2DGS::forward(
   ctx->saved_data["tile_size"] = tile_size;
 
   // double to float
-  render_alphas = render_alphas.to(torch::kFloat);
-  return {render_colors, render_alphas, render_normals, render_distort,
-          render_median};
+  // render_alphas = render_alphas.to(torch::kFloat);
+  return {render_colors,  render_depths,  render_alphas,
+          render_normals, render_distort, render_median};
 }
 
 torch::autograd::tensor_list
 RasterizeToPixels2DGS::backward(torch::autograd::AutogradContext *ctx,
                                 torch::autograd::tensor_list grad_outputs) {
   auto v_render_colors = grad_outputs[0];
-  auto v_render_alphas = grad_outputs[1];
-  auto v_render_normals = grad_outputs[2];
-  auto v_render_distort = grad_outputs[3];
-  auto v_render_median = grad_outputs[4];
+  auto v_render_depths = grad_outputs[1];
+  auto v_render_alphas = grad_outputs[2];
+  auto v_render_normals = grad_outputs[3];
+  auto v_render_distort = grad_outputs[4];
+  auto v_render_median = grad_outputs[5];
 
   auto saved = ctx->get_saved_variables();
   auto means2d = saved[0];
@@ -222,10 +224,11 @@ RasterizeToPixels2DGS::backward(torch::autograd::AutogradContext *ctx,
   auto isect_offsets = saved[6];
   auto flatten_ids = saved[7];
   auto render_colors = saved[8];
-  auto render_alphas = saved[9];
-  auto last_ids = saved[10];
-  auto median_ids = saved[11];
-  auto absgrad = saved[12];
+  auto render_depths = saved[9];
+  auto render_alphas = saved[10];
+  auto last_ids = saved[11];
+  auto median_ids = saved[12];
+  auto absgrad = saved[13];
 
   auto backgrounds = ctx->saved_data["backgrounds"].toOptional<torch::Tensor>();
   auto masks = ctx->saved_data["masks"].toOptional<torch::Tensor>();
@@ -239,8 +242,9 @@ RasterizeToPixels2DGS::backward(torch::autograd::AutogradContext *ctx,
       gsplat::rasterize_to_pixels_bwd_2dgs_tensor(
           means2d, ray_transforms, colors, opacities, normals, densify,
           backgrounds, masks, width, height, tile_size, isect_offsets,
-          flatten_ids, render_colors, render_alphas, last_ids, median_ids,
-          v_render_colors.contiguous(), v_render_alphas.contiguous(),
+          flatten_ids, render_colors, render_depths, render_alphas, last_ids,
+          median_ids, v_render_colors.contiguous(),
+          v_render_depths.contiguous(), v_render_alphas.contiguous(),
           v_render_normals.contiguous(), v_render_distort.contiguous(),
           v_render_median.contiguous(), absgrad.requires_grad());
   torch::cuda::synchronize();
@@ -269,6 +273,7 @@ RasterizeToPixels2DGS::backward(torch::autograd::AutogradContext *ctx,
 }
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor,
+           torch::Tensor,
            torch::Tensor>
 rasterize_to_pixels_2dgs(
     const torch::Tensor &means2d,        // [C, N, 2] or [nnz, 2]
@@ -348,16 +353,17 @@ rasterize_to_pixels_2dgs(
       tile_size, isect_offsets.contiguous(), flatten_ids.contiguous(), absgrad,
       distloss);
   auto render_colors = outputs[0];
-  auto render_alphas = outputs[1];
-  auto render_normals = outputs[2];
-  auto render_distort = outputs[3];
-  auto render_median = outputs[4];
+  auto render_depths = outputs[1];
+  auto render_alphas = outputs[2];
+  auto render_normals = outputs[3];
+  auto render_distort = outputs[4];
+  auto render_median = outputs[5];
 
   if (padded_channels > 0) {
     render_colors =
         render_colors.slice(/*dim=*/-1, /*start=*/0, /*end=*/-padded_channels);
   }
 
-  return std::make_tuple(render_colors, render_alphas, render_normals,
-                         render_distort, render_median);
+  return std::make_tuple(render_colors, render_depths, render_alphas,
+                         render_normals, render_distort, render_median);
 }
