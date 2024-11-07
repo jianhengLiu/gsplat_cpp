@@ -182,7 +182,7 @@ torch::autograd::tensor_list RasterizeToPixels2DGS::forward(
     const torch::Tensor &isect_offsets, // [C, tile_height, tile_width]
     const torch::Tensor &flatten_ids,   // [n_isects]
     const torch::Tensor &absgrad, const bool &distloss) {
-  auto [render_colors, render_depths, render_alphas, render_normals,
+  auto [render_colors, render_depths, render_alphas, render_Ts, render_normals,
         render_distort, render_median, last_ids, median_ids] =
       gsplat::rasterize_to_pixels_fwd_2dgs_tensor(
           means2d, ray_transforms, colors, opacities, normals, backgrounds,
@@ -190,8 +190,8 @@ torch::autograd::tensor_list RasterizeToPixels2DGS::forward(
 
   ctx->save_for_backward({means2d, ray_transforms, colors, opacities, normals,
                           densify, isect_offsets, flatten_ids, render_colors,
-                          render_depths, render_alphas, last_ids, median_ids,
-                          absgrad});
+                          render_depths, render_alphas, render_Ts, last_ids,
+                          median_ids, absgrad});
   ctx->saved_data["backgrounds"] = backgrounds;
   ctx->saved_data["masks"] = masks;
   ctx->saved_data["width"] = width;
@@ -226,9 +226,10 @@ RasterizeToPixels2DGS::backward(torch::autograd::AutogradContext *ctx,
   auto render_colors = saved[8];
   auto render_depths = saved[9];
   auto render_alphas = saved[10];
-  auto last_ids = saved[11];
-  auto median_ids = saved[12];
-  auto absgrad = saved[13];
+  auto render_Ts = saved[11];
+  auto last_ids = saved[12];
+  auto median_ids = saved[13];
+  auto absgrad = saved[14];
 
   auto backgrounds = ctx->saved_data["backgrounds"].toOptional<torch::Tensor>();
   auto masks = ctx->saved_data["masks"].toOptional<torch::Tensor>();
@@ -242,8 +243,8 @@ RasterizeToPixels2DGS::backward(torch::autograd::AutogradContext *ctx,
       gsplat::rasterize_to_pixels_bwd_2dgs_tensor(
           means2d, ray_transforms, colors, opacities, normals, densify,
           backgrounds, masks, width, height, tile_size, isect_offsets,
-          flatten_ids, render_colors, render_depths, render_alphas, last_ids,
-          median_ids, v_render_colors.contiguous(),
+          flatten_ids, render_colors, render_depths, render_alphas, render_Ts,
+          last_ids, median_ids, v_render_colors.contiguous(),
           v_render_depths.contiguous(), v_render_alphas.contiguous(),
           v_render_normals.contiguous(), v_render_distort.contiguous(),
           v_render_median.contiguous(), absgrad.requires_grad());
