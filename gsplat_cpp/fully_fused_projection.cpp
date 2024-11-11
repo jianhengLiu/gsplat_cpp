@@ -177,20 +177,20 @@ torch::autograd::tensor_list FullyFusedProjectionPacked2DGS::forward(
     int width, int height, float near_plane, float far_plane, float radius_clip,
     bool sparse_grad) {
   auto [indptr, camera_ids, gaussian_ids, radii, means2d, depths,
-        ray_transforms, normals] =
+        ray_transforms, normals, randns, samples] =
       gsplat::fully_fused_projection_packed_fwd_2dgs_tensor(
           means, quats, scales, viewmats, Ks, width, height, near_plane,
           far_plane, radius_clip);
 
   ctx->save_for_backward({camera_ids, gaussian_ids, means, quats, scales,
-                          viewmats, Ks, ray_transforms});
+                          viewmats, Ks, ray_transforms, randns});
 
   ctx->saved_data["width"] = width;
   ctx->saved_data["height"] = height;
   ctx->saved_data["sparse_grad"] = sparse_grad;
 
-  return {camera_ids, gaussian_ids,   radii,  means2d,
-          depths,     ray_transforms, normals};
+  return {camera_ids, gaussian_ids,   radii,   means2d,
+          depths,     ray_transforms, normals, samples};
 }
 
 torch::autograd::tensor_list FullyFusedProjectionPacked2DGS::backward(
@@ -200,6 +200,7 @@ torch::autograd::tensor_list FullyFusedProjectionPacked2DGS::backward(
   auto v_depths = grad_outputs[4];
   auto v_ray_transforms = grad_outputs[5];
   auto v_normals = grad_outputs[6];
+  auto v_samples = grad_outputs[7];
 
   auto saved = ctx->get_saved_variables();
   auto camera_ids = saved[0];
@@ -210,6 +211,7 @@ torch::autograd::tensor_list FullyFusedProjectionPacked2DGS::backward(
   auto viewmats = saved[5];
   auto Ks = saved[6];
   auto ray_transforms = saved[7];
+  auto randns = saved[8];
 
   int width = ctx->saved_data["width"].toInt();
   int height = ctx->saved_data["height"].toInt();
@@ -218,9 +220,9 @@ torch::autograd::tensor_list FullyFusedProjectionPacked2DGS::backward(
   auto [v_means, v_quats, v_scales, v_viewmats] =
       gsplat::fully_fused_projection_packed_bwd_2dgs_tensor(
           means, quats, scales, viewmats, Ks, width, height, camera_ids,
-          gaussian_ids, ray_transforms, v_means2d.contiguous(),
+          gaussian_ids, ray_transforms, randns, v_means2d.contiguous(),
           v_depths.contiguous(), v_ray_transforms.contiguous(),
-          v_normals.contiguous(),
+          v_normals.contiguous(), v_samples.contiguous(),
           ctx->needs_input_grad(4), // viewmats_requires_grad
           sparse_grad);
 
@@ -263,7 +265,7 @@ torch::autograd::tensor_list FullyFusedProjectionPacked2DGS::backward(
 }
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor,
-           torch::Tensor, torch::Tensor, torch::Tensor>
+           torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
 fully_fused_projection_2dgs(torch::Tensor means,    // [N, 3]
                             torch::Tensor quats,    // [N, 4] or None
                             torch::Tensor scales,   // [N, 3] or None
@@ -299,5 +301,5 @@ fully_fused_projection_2dgs(torch::Tensor means,    // [N, 3]
       means, quats, scales, viewmats, Ks, width, height, near_plane, far_plane,
       radius_clip, sparse_grad);
   return std::make_tuple(outputs[0], outputs[1], outputs[2], outputs[3],
-                         outputs[4], outputs[5], outputs[6]);
+                         outputs[4], outputs[5], outputs[6], outputs[7]);
 }
