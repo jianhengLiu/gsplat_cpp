@@ -1,6 +1,6 @@
 #pragma once
 
-#include <gsplat/cuda/csrc/bindings.h>
+#include <gsplat/cuda/include/bindings.h>
 
 struct SphericalHarmonics
     : public torch::autograd::Function<SphericalHarmonics> {

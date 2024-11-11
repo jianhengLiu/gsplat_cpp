@@ -1,6 +1,6 @@
 #include "rasterize_to_pixels.h"
 
-#include <gsplat/cuda/csrc/bindings.h>
+#include <gsplat/cuda/include/bindings.h>
 
 using namespace torch;
 using namespace std;
