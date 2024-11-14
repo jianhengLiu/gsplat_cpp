@@ -286,7 +286,8 @@ fully_fused_projection_2dgs(torch::Tensor means,    // [N, 3]
   TORCH_CHECK(quats.sizes() == torch::IntArrayRef({N, 4}),
               "Invalid quats size");
   TORCH_CHECK(scales.sizes() == torch::IntArrayRef({N, 3}),
-              "Invalid scales size");
+              "Invalid scales size: ", scales.sizes(),
+              torch::IntArrayRef({N, 3}));
   quats = quats.contiguous();
   scales = scales.contiguous();
 
