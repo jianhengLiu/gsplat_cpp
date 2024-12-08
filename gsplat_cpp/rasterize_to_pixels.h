@@ -53,7 +53,7 @@ public:
           int width, int height, int tile_size,
           const torch::Tensor &isect_offsets, // [C, tile_height, tile_width]
           const torch::Tensor &flatten_ids,   // [n_isects]
-          const torch::Tensor &absgrad = torch::Tensor(),
+          const torch::Tensor &absgrad = torch::Tensor(), // [C, N, 4]
           const bool &distloss = false);
 
   static torch::autograd::tensor_list

@@ -181,7 +181,8 @@ torch::autograd::tensor_list RasterizeToPixels2DGS::forward(
     int width, int height, int tile_size,
     const torch::Tensor &isect_offsets, // [C, tile_height, tile_width]
     const torch::Tensor &flatten_ids,   // [n_isects]
-    const torch::Tensor &absgrad, const bool &distloss) {
+    const torch::Tensor &absgrad,       // [C, N, 4]
+    const bool &distloss) {
   auto [render_colors, render_depths, render_alphas, render_Ts, render_normals,
         render_distort, render_median, last_ids, median_ids] =
       gsplat::rasterize_to_pixels_fwd_2dgs_tensor(
@@ -347,12 +348,20 @@ rasterize_to_pixels_2dgs(
   TORCH_CHECK(tile_width * tile_size >= image_width,
               "Assert Failed: tile_width * tile_size >= image_width");
 
+  TORCH_CHECK(means2d.is_contiguous());
+  TORCH_CHECK(ray_transforms.is_contiguous());
+  TORCH_CHECK(pad_colors.is_contiguous());
+  TORCH_CHECK(opacities.is_contiguous());
+  TORCH_CHECK(normals.is_contiguous());
+  TORCH_CHECK(densify.is_contiguous());
+  TORCH_CHECK(isect_offsets.is_contiguous());
+  TORCH_CHECK(flatten_ids.is_contiguous());
+  TORCH_CHECK(absgrad.is_contiguous());
+
   auto outputs = RasterizeToPixels2DGS::apply(
-      means2d.contiguous(), ray_transforms.contiguous(),
-      pad_colors.contiguous(), opacities.contiguous(), normals.contiguous(),
-      densify.contiguous(), backgrounds, masks, image_width, image_height,
-      tile_size, isect_offsets.contiguous(), flatten_ids.contiguous(), absgrad,
-      distloss);
+      means2d, ray_transforms, pad_colors, opacities, normals, densify,
+      backgrounds, masks, image_width, image_height, tile_size, isect_offsets,
+      flatten_ids, absgrad, distloss);
   auto render_colors = outputs[0];
   auto render_depths = outputs[1];
   auto render_alphas = outputs[2];
