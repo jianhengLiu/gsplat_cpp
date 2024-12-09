@@ -181,7 +181,7 @@ torch::autograd::tensor_list RasterizeToPixels2DGS::forward(
     int width, int height, int tile_size,
     const torch::Tensor &isect_offsets, // [C, tile_height, tile_width]
     const torch::Tensor &flatten_ids,   // [n_isects]
-    const torch::Tensor &absgrad,       // [C, N, 4]
+    const torch::Tensor &absgrad,       // [C, N, 2]
     const bool &distloss) {
   auto [render_colors, render_depths, render_alphas, render_Ts, render_normals,
         render_distort, render_median, last_ids, median_ids] =

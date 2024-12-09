@@ -334,12 +334,7 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
     }
   }
 
-  // auto means2d_absgrad = torch::zeros_like(means2d).requires_grad_(absgrad);
-
-  auto means2d_abs_sizes = means2d.sizes().vec();
-  means2d_abs_sizes[means2d.dim() - 1] = 4;
-  auto means2d_absgrad = torch::zeros(means2d_abs_sizes, means2d.options())
-                             .requires_grad_(absgrad);
+  auto means2d_absgrad = torch::zeros_like(means2d).requires_grad_(absgrad);
   auto densify =
       torch::zeros_like(means2d, means.options().requires_grad(true));
   auto [render_colors, render_depths, render_alphas, render_normals,
