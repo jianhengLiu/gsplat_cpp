@@ -4,8 +4,6 @@
 
 #include "fully_fused_projection.h"
 #include "isect_tiles.hpp"
-#define LLOG_HEADER_ONLY
-#include "llog.h"
 #include "rasterize_to_pixels.h"
 #include "spherical_harmonics.hpp"
 namespace gsplat_cpp {
@@ -247,8 +245,6 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
                    at::optional<torch::Tensor> backgrounds, bool sparse_grad,
                    bool absgrad, bool distloss,
                    const std::vector<torch::Tensor> &attributes) {
-  static auto p_t_pre = llog::CreateTimer("pre");
-  p_t_pre->tic();
   std::map<std::string, torch::Tensor> meta;
 
   auto N = means.size(0);
