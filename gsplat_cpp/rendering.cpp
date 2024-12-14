@@ -289,7 +289,7 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
 
   // # Compute Ray-Splat intersection transformation.
   auto [camera_ids, gaussian_ids, radii, means2d, depths, ray_transforms,
-        normals, samples] =
+        normals, samples, samples_weights] =
       fully_fused_projection_2dgs(means, quats, scales, viewmats, Ks, width,
                                   height, near_plane, far_plane, radius_clip,
                                   packed, sparse_grad);

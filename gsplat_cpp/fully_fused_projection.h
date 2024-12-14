@@ -52,7 +52,8 @@ public:
 };
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor,
-           torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
+           torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor,
+           torch::Tensor>
 fully_fused_projection_2dgs(torch::Tensor means,    // [N, 3]
                             torch::Tensor quats,    // [N, 4] or None
                             torch::Tensor scales,   // [N, 3] or None
