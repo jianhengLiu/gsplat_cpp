@@ -334,7 +334,7 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
   auto densify =
       torch::zeros_like(means2d, means.options().requires_grad(true));
   auto [render_colors, render_depths, render_alphas, render_normals,
-        render_distort, render_median] =
+        render_distort, render_median, visibilities] =
       rasterize_to_pixels_2dgs(means2d, ray_transforms, pt_colors, pt_opacities,
                                normals, densify, width, height, tile_size,
                                isect_offsets, flatten_ids, backgrounds,

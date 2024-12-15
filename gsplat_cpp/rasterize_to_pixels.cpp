@@ -184,7 +184,7 @@ torch::autograd::tensor_list RasterizeToPixels2DGS::forward(
     const torch::Tensor &absgrad,       // [C, N, 2]
     const bool &distloss) {
   auto [render_colors, render_depths, render_alphas, render_Ts, render_normals,
-        render_distort, render_median, last_ids, median_ids] =
+        render_distort, render_median, last_ids, median_ids, visibiilities] =
       gsplat::rasterize_to_pixels_fwd_2dgs_tensor(
           means2d, ray_transforms, colors, opacities, normals, backgrounds,
           masks, width, height, tile_size, isect_offsets, flatten_ids);
@@ -201,8 +201,8 @@ torch::autograd::tensor_list RasterizeToPixels2DGS::forward(
 
   // double to float
   // render_alphas = render_alphas.to(torch::kFloat);
-  return {render_colors,  render_depths,  render_alphas,
-          render_normals, render_distort, render_median};
+  return {render_colors,  render_depths, render_alphas, render_normals,
+          render_distort, render_median, visibiilities};
 }
 
 torch::autograd::tensor_list
@@ -275,7 +275,7 @@ RasterizeToPixels2DGS::backward(torch::autograd::AutogradContext *ctx,
 }
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor,
-           torch::Tensor,
+           torch::Tensor, torch::Tensor,
            torch::Tensor>
 rasterize_to_pixels_2dgs(
     const torch::Tensor &means2d,        // [C, N, 2] or [nnz, 2]
@@ -368,6 +368,7 @@ rasterize_to_pixels_2dgs(
   auto render_normals = outputs[3];
   auto render_distort = outputs[4];
   auto render_median = outputs[5];
+  auto visibiilities = outputs[6];
 
   if (padded_channels > 0) {
     render_colors =
@@ -375,5 +376,6 @@ rasterize_to_pixels_2dgs(
   }
 
   return std::make_tuple(render_colors, render_depths, render_alphas,
-                         render_normals, render_distort, render_median);
+                         render_normals, render_distort, render_median,
+                         visibiilities);
 }

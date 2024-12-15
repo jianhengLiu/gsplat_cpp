@@ -62,7 +62,7 @@ public:
 };
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor,
-           torch::Tensor,
+           torch::Tensor, torch::Tensor,
            torch::Tensor>
 rasterize_to_pixels_2dgs(
     const torch::Tensor &means2d,        // [C, N, 2] or [nnz, 2]
