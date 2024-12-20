@@ -218,14 +218,13 @@ torch::autograd::tensor_list FullyFusedProjectionPacked2DGS::backward(
   int width = ctx->saved_data["width"].toInt();
   int height = ctx->saved_data["height"].toInt();
   bool sparse_grad = ctx->saved_data["sparse_grad"].toBool();
-
   auto [v_means, v_quats, v_scales, v_viewmats] =
       gsplat::fully_fused_projection_packed_bwd_2dgs_tensor(
           means, quats, scales, viewmats, Ks, width, height, camera_ids,
           gaussian_ids, ray_transforms, randns, v_means2d.contiguous(),
           v_depths.contiguous(), v_ray_transforms.contiguous(),
           v_normals.contiguous(), v_samples.contiguous(),
-          ctx->needs_input_grad(4), // viewmats_requires_grad
+          ctx->needs_input_grad(3), // viewmats_requires_grad
           sparse_grad);
 
   if (!ctx->needs_input_grad(0)) {
