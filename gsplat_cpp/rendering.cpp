@@ -122,8 +122,8 @@ rasterization(const torch::Tensor &means,     //[N, 3]
 
   // Project Gaussians to 2D
   bool cal_compensations = rasterize_mode == "antialiased";
-  auto [camera_ids, gaussian_ids, radii, means2d, depths, conics,
-        compensations] =
+  auto [camera_ids, gaussian_ids, radii, means2d, depths, conics, compensations,
+        samples, samples_weights] =
       fully_fused_projection(means, quats, scales, viewmats, Ks, width, height,
                              eps2d, near_plane, far_plane, radius_clip, packed,
                              sparse_grad, cal_compensations);
