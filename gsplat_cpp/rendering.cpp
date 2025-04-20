@@ -38,7 +38,8 @@ get_view_colors(const torch::Tensor &viewmats, const torch::Tensor &means,
       shs = colors.index({camera_ids, gaussian_ids, torch::indexing::Slice(),
                           torch::indexing::Slice()});
     }
-    pt_colors = spherical_harmonics(sh_degree.value(), dirs, shs, radii > 0);
+    pt_colors = spherical_harmonics(sh_degree.value(), dirs, shs,
+                                    get<0>(radii.min(-1)) > 0);
 
     pt_colors = torch::clamp_min(pt_colors + 0.5, 0.0);
   }
@@ -61,9 +62,9 @@ tile_encode(const int &width, const int &height, const int &tile_size,
   return {isect_offsets, flatten_ids, isect_offsets};
 }
 
-/* std::tuple<torch::Tensor, torch::Tensor, std::map<std::string, torch::Tensor>>rasterization(const torch::Tensor &means,     //[N, 3]
-              const torch::Tensor &quats,     // [N, 4]
-              const torch::Tensor &scales,    // [N, 3]
+/* std::tuple<torch::Tensor, torch::Tensor, std::map<std::string,
+torch::Tensor>>rasterization(const torch::Tensor &means,     //[N, 3] const
+torch::Tensor &quats,     // [N, 4] const torch::Tensor &scales,    // [N, 3]
               const torch::Tensor &opacities, // [N]
               const torch::Tensor &colors,    //[(C,) N, D] or [(C,) N, K, 3]
               const torch::Tensor &viewmats,  //[C, 4, 4]
