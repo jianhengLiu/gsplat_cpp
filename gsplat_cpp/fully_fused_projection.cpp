@@ -1,10 +1,10 @@
 #include "fully_fused_projection.h"
 
-#include <gsplat/cuda/include/bindings.h>
+#include <gsplat/cuda/include/Ops.h>
 
 using namespace torch;
 using namespace std;
-
+/*
 torch::autograd::tensor_list FullyFusedProjectionPacked::forward(
     torch::autograd::AutogradContext *ctx,
     const torch::Tensor &means,    // [N, 3]
@@ -165,7 +165,7 @@ fully_fused_projection(torch::Tensor means,    // [N, 3]
       far_plane, radius_clip, sparse_grad, calc_compensations);
   return std::make_tuple(outputs[0], outputs[1], outputs[2], outputs[3],
                          outputs[4], outputs[5], outputs[6]);
-}
+} */
 
 torch::autograd::tensor_list FullyFusedProjectionPacked2DGS::forward(
     torch::autograd::AutogradContext *ctx,
@@ -178,9 +178,9 @@ torch::autograd::tensor_list FullyFusedProjectionPacked2DGS::forward(
     bool sparse_grad) {
   auto [indptr, camera_ids, gaussian_ids, radii, means2d, depths,
         ray_transforms, normals, randns, samples] =
-      gsplat::fully_fused_projection_packed_fwd_2dgs_tensor(
-          means, quats, scales, viewmats, Ks, width, height, near_plane,
-          far_plane, radius_clip);
+      gsplat::projection_2dgs_packed_fwd(means, quats, scales, viewmats, Ks,
+                                         width, height, near_plane, far_plane,
+                                         radius_clip);
 
   ctx->save_for_backward({camera_ids, gaussian_ids, means, quats, scales,
                           viewmats, Ks, ray_transforms, randns});
@@ -219,7 +219,7 @@ torch::autograd::tensor_list FullyFusedProjectionPacked2DGS::backward(
   int height = ctx->saved_data["height"].toInt();
   bool sparse_grad = ctx->saved_data["sparse_grad"].toBool();
   auto [v_means, v_quats, v_scales, v_viewmats] =
-      gsplat::fully_fused_projection_packed_bwd_2dgs_tensor(
+      gsplat::projection_2dgs_packed_bwd(
           means, quats, scales, viewmats, Ks, width, height, camera_ids,
           gaussian_ids, ray_transforms, randns, v_means2d.contiguous(),
           v_depths.contiguous(), v_ray_transforms.contiguous(),

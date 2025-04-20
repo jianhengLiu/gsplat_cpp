@@ -1,15 +1,17 @@
 #pragma once
 
-#include <gsplat/cuda/include/bindings.h>
+#include <gsplat/cuda/include/Ops.h>
+#include <torch/csrc/autograd/custom_function.h>
 
 struct SphericalHarmonics
     : public torch::autograd::Function<SphericalHarmonics> {
 public:
-  static torch::Tensor forward(torch::autograd::AutogradContext *ctx,
-                               int sh_degree, const torch::Tensor &dirs,
-                               const torch::Tensor &coeffs,
-                               const at::optional<torch::Tensor> &masks) {
-    auto colors = gsplat::compute_sh_fwd_tensor(sh_degree, dirs, coeffs, masks);
+  static at::Tensor forward(torch::autograd::AutogradContext *ctx,
+                            int sh_degree, const at::Tensor &dirs,
+                            const at::Tensor &coeffs,
+                            const at::optional<at::Tensor> &masks) {
+    auto colors =
+        gsplat::spherical_harmonics_fwd(sh_degree, dirs, coeffs, masks);
     ctx->save_for_backward({dirs, coeffs});
 
     ctx->saved_data["masks"] = masks;
@@ -24,28 +26,27 @@ public:
     auto saved = ctx->get_saved_variables();
     auto dirs = saved[0];
     auto coeffs = saved[1];
-    auto masks = ctx->saved_data["masks"].toOptional<torch::Tensor>();
+    auto masks = ctx->saved_data["masks"].toOptional<at::Tensor>();
     int sh_degree = ctx->saved_data["sh_degree"].toInt();
     int num_bases = ctx->saved_data["num_bases"].toInt();
     bool compute_v_dirs = ctx->needs_input_grad(1);
 
     auto v_colors = grad_outputs[0].contiguous();
-    auto [v_coeffs, v_dirs] = gsplat::compute_sh_bwd_tensor(
+    auto [v_coeffs, v_dirs] = gsplat::spherical_harmonics_bwd(
         num_bases, sh_degree, dirs, coeffs, masks, v_colors, compute_v_dirs);
 
     if (!compute_v_dirs) {
-      v_dirs = torch::Tensor();
+      v_dirs = at::Tensor();
     }
 
-    return {torch::Tensor(), v_dirs, v_coeffs, torch::Tensor()};
+    return {at::Tensor(), v_dirs, v_coeffs, at::Tensor()};
   }
 };
 
-torch::Tensor
-spherical_harmonics(int degrees_to_use,
-                    const torch::Tensor &dirs,   // [..., 3]
-                    const torch::Tensor &coeffs, // [..., K, 3]
-                    at::optional<torch::Tensor> masks = at::nullopt) {
+at::Tensor spherical_harmonics(int degrees_to_use,
+                               const at::Tensor &dirs,   // [..., 3]
+                               const at::Tensor &coeffs, // [..., K, 3]
+                               at::optional<at::Tensor> masks = at::nullopt) {
   // Check the input tensor shapes
   TORCH_CHECK((degrees_to_use + 1) * (degrees_to_use + 1) <= coeffs.size(-2),
               "Invalid coeffs shape");

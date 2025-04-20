@@ -20,18 +20,18 @@ public:
            torch::autograd::tensor_list grad_outputs);
 };
 
-std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor,
-           torch::Tensor, torch::Tensor, torch::Tensor>
-fully_fused_projection(torch::Tensor means,    // [N, 3]
-                       torch::Tensor quats,    // [N, 4] or None
-                       torch::Tensor scales,   // [N, 3] or None
-                       torch::Tensor viewmats, // [C, 4, 4]
-                       torch::Tensor Ks,       // [C, 3, 3]
-                       int width, int height, float eps2d = 0.3f,
-                       float near_plane = 0.01f, float far_plane = 1e10f,
-                       float radius_clip = 0.0f, bool packed = false,
-                       bool sparse_grad = false,
-                       bool calc_compensations = false);
+// std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor,
+//            torch::Tensor, torch::Tensor, torch::Tensor>
+// fully_fused_projection(torch::Tensor means,    // [N, 3]
+//                        torch::Tensor quats,    // [N, 4] or None
+//                        torch::Tensor scales,   // [N, 3] or None
+//                        torch::Tensor viewmats, // [C, 4, 4]
+//                        torch::Tensor Ks,       // [C, 3, 3]
+//                        int width, int height, float eps2d = 0.3f,
+//                        float near_plane = 0.01f, float far_plane = 1e10f,
+//                        float radius_clip = 0.0f, bool packed = false,
+//                        bool sparse_grad = false,
+//                        bool calc_compensations = false);
 
 struct FullyFusedProjectionPacked2DGS
     : public torch::autograd::Function<FullyFusedProjectionPacked2DGS> {

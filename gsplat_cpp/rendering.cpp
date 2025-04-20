@@ -61,8 +61,7 @@ tile_encode(const int &width, const int &height, const int &tile_size,
   return {isect_offsets, flatten_ids, isect_offsets};
 }
 
-std::tuple<torch::Tensor, torch::Tensor, std::map<std::string, torch::Tensor>>
-rasterization(const torch::Tensor &means,     //[N, 3]
+/* std::tuple<torch::Tensor, torch::Tensor, std::map<std::string, torch::Tensor>>rasterization(const torch::Tensor &means,     //[N, 3]
               const torch::Tensor &quats,     // [N, 4]
               const torch::Tensor &scales,    // [N, 3]
               const torch::Tensor &opacities, // [N]
@@ -229,7 +228,7 @@ rasterization(const torch::Tensor &means,     //[N, 3]
   meta["n_cameras"] = torch::tensor({C});
   // p_t_meta->toc_sum();
   return std::make_tuple(render_colors, render_alphas, meta);
-}
+} */
 
 std::tuple<torch::Tensor, torch::Tensor, std::map<std::string, torch::Tensor>>
 rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
