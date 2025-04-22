@@ -19,7 +19,7 @@ tile_encode(const int &width, const int &height, const int &tile_size,
             const int &camera_num, const torch::Tensor &camera_ids,
             const torch::Tensor &gaussian_ids);
 
-/* std::tuple<torch::Tensor, torch::Tensor, std::map<std::string, torch::Tensor>>
+std::tuple<torch::Tensor, torch::Tensor, std::map<std::string, torch::Tensor>>
 rasterization(
     const torch::Tensor &means,     //[N, 3]
     const torch::Tensor &quats,     // [N, 4]
@@ -35,10 +35,9 @@ rasterization(
     float eps2d = 0.3f, at::optional<int> sh_degree = at::nullopt,
     bool packed = true, int tile_size = 16,
     at::optional<torch::Tensor> backgrounds = at::nullopt,
-
     bool sparse_grad = false, bool absgrad = false,
     const std::string &rasterize_mode = "classic", //"classic", "antialiased"
-    int channel_chunk = 32); */
+    int channel_chunk = 32);
 
 std::tuple<torch::Tensor, torch::Tensor, std::map<std::string, torch::Tensor>>
 rasterization_2dgs(const torch::Tensor &means,     //[N, 3]

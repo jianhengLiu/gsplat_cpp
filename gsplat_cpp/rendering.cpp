@@ -62,9 +62,12 @@ tile_encode(const int &width, const int &height, const int &tile_size,
   return {isect_offsets, flatten_ids, isect_offsets};
 }
 
-/* std::tuple<torch::Tensor, torch::Tensor, std::map<std::string,
-torch::Tensor>>rasterization(const torch::Tensor &means,     //[N, 3] const
-torch::Tensor &quats,     // [N, 4] const torch::Tensor &scales,    // [N, 3]
+std::tuple<torch::Tensor, torch::Tensor,
+           std::map<std::string,
+                    torch::Tensor>>
+rasterization(const torch::Tensor &means,     //[N, 3]
+              const torch::Tensor &quats,     // [N, 4]
+              const torch::Tensor &scales,    // [N, 3]
               const torch::Tensor &opacities, // [N]
               const torch::Tensor &colors,    //[(C,) N, D] or [(C,) N, K, 3]
               const torch::Tensor &viewmats,  //[C, 4, 4]
@@ -75,8 +78,6 @@ torch::Tensor &quats,     // [N, 4] const torch::Tensor &scales,    // [N, 3]
               at::optional<torch::Tensor> backgrounds, bool sparse_grad,
               bool absgrad, const std::string &rasterize_mode,
               int channel_chunk) {
-  // static auto p_t_pre = llog::CreateTimer("pre");
-  // p_t_pre->tic();
   std::map<std::string, torch::Tensor> meta;
 
   auto N = means.size(0);
@@ -229,7 +230,7 @@ torch::Tensor &quats,     // [N, 4] const torch::Tensor &scales,    // [N, 3]
   meta["n_cameras"] = torch::tensor({C});
   // p_t_meta->toc_sum();
   return std::make_tuple(render_colors, render_alphas, meta);
-} */
+}
 
 std::tuple<torch::Tensor, torch::Tensor, std::map<std::string, torch::Tensor>>
 rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
@@ -283,10 +284,6 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
                 "Invalid colors shape");
   }
 
-  // p_t_pre->toc_sum();
-  // static auto p_t_proj = llog::CreateTimer("proj");
-  // p_t_proj->tic();
-
   // # Compute Ray-Splat intersection transformation.
   auto [camera_ids, gaussian_ids, radii, means2d, depths, ray_transforms,
         normals, samples, samples_weights] =
@@ -295,24 +292,12 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
                                   packed, sparse_grad);
   auto pt_opacities = opacities.index({gaussian_ids});
 
-  // p_t_proj->toc_sum();
-  // static auto p_t_sh = llog::CreateTimer("sh");
-  // p_t_sh->tic();
-
   torch::Tensor pt_colors = get_view_colors(
       viewmats, means, radii, colors, camera_ids, gaussian_ids, sh_degree);
-
-  // p_t_sh->toc_sum();
-  // static auto p_t_tile = llog::CreateTimer("tile");
-  // p_t_tile->tic();
 
   auto [tiles_per_gauss, flatten_ids, isect_offsets] =
       tile_encode(width, height, tile_size, means2d, radii, depths, packed, C,
                   camera_ids, gaussian_ids);
-
-  // p_t_tile->toc_sum();
-  // static auto p_t_ras = llog::CreateTimer("ras");
-  // p_t_ras->tic();
 
   // Rasterize to pixels
   if (render_mode == "RGB+D" || render_mode == "RGB+ED") {
