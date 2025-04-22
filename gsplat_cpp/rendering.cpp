@@ -117,10 +117,6 @@ rasterization(const torch::Tensor &means,     //[N, 3]
                 "Invalid colors shape");
   }
 
-  // p_t_pre->toc_sum();
-  // static auto p_t_proj = llog::CreateTimer("proj");
-  // p_t_proj->tic();
-
   // Project Gaussians to 2D
   bool cal_compensations = rasterize_mode == "antialiased";
   auto [camera_ids, gaussian_ids, radii, means2d, depths, conics,
@@ -135,24 +131,12 @@ rasterization(const torch::Tensor &means,     //[N, 3]
     pt_opacities = pt_opacities * compensations;
   }
 
-  // p_t_proj->toc_sum();
-  // static auto p_t_sh = llog::CreateTimer("sh");
-  // p_t_sh->tic();
-
   torch::Tensor pt_colors = get_view_colors(
       viewmats, means, radii, colors, camera_ids, gaussian_ids, sh_degree);
-
-  // p_t_sh->toc_sum();
-  // static auto p_t_tile = llog::CreateTimer("tile");
-  // p_t_tile->tic();
 
   auto [tiles_per_gauss, flatten_ids, isect_offsets] =
       tile_encode(width, height, tile_size, means2d, radii, depths, packed, C,
                   camera_ids, gaussian_ids);
-
-  // p_t_tile->toc_sum();
-  // static auto p_t_ras = llog::CreateTimer("ras");
-  // p_t_ras->tic();
 
   // Rasterize to pixels
   torch::Tensor render_colors, render_alphas;
@@ -208,9 +192,6 @@ rasterization(const torch::Tensor &means,     //[N, 3]
          render_colors.slice(-1, -1) / render_alphas.clamp_min(1e-10f)},
         -1);
   }
-  // p_t_ras->toc_sum();
-  // static auto p_t_meta = llog::CreateTimer("meta");
-  // p_t_meta->tic();
 
   // # global camera_ids
   meta["camera_ids"] = camera_ids;
@@ -228,7 +209,6 @@ rasterization(const torch::Tensor &means,     //[N, 3]
   meta["width"] = torch::tensor({width});
   meta["height"] = torch::tensor({height});
   meta["n_cameras"] = torch::tensor({C});
-  // p_t_meta->toc_sum();
   return std::make_tuple(render_colors, render_alphas, meta);
 }
 
@@ -356,10 +336,6 @@ rasterization_2dgs(const torch::Tensor &means,     //[N, 3]
                                 .index({0, torch::indexing::Slice(0, 3),
                                         torch::indexing::Slice(0, 3)})
                                 .t());
-
-  // p_t_ras->toc_sum();
-  // static auto p_t_meta = llog::CreateTimer("meta");
-  // p_t_meta->tic();
 
   meta["render_normal"] = render_normals;
   meta["render_median"] = render_median;
