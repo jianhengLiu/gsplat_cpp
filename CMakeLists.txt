@@ -31,9 +31,8 @@ list(FILTER GSPLAT_SOURCES EXCLUDE REGEX ".*third_party.*")
 
 add_library(gsplat ${GSPLAT_SOURCES})
 target_link_libraries(gsplat ${TORCH_LIBRARIES})
-target_include_directories(
-  gsplat PRIVATE submodules/gsplat/gsplat/cuda/include
-                 submodules/gsplat/gsplat/cuda/csrc/third_party/glm)
+target_include_directories(gsplat PUBLIC submodules/gsplat/gsplat/cuda/include
+                           submodules/gsplat/gsplat/cuda/csrc/third_party/glm)
 
 # Add your gsplat_cpp library
 file(GLOB_RECURSE GSPLAT_CPP_SOURCES gsplat_cpp/*.cpp)
