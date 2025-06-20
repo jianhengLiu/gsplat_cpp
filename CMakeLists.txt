@@ -8,12 +8,6 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_CXX_FLAGS
     "${CMAKE_CXX_FLAGS} -O3 -Wno-sign-compare -DAT_PARALLEL_OPENMP -fopenmp")
 
-find_package(OpenMP REQUIRED)
-if(OPENMP_FOUND)
-  message("OPENMP FOUND")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-endif()
-
 # Define CUDA flags
 set(NVCC_FLAGS
     "-O3 --use_fast_math --expt-relaxed-constexpr -diag-suppress 20012,186")
@@ -31,8 +25,9 @@ list(FILTER GSPLAT_SOURCES EXCLUDE REGEX ".*third_party.*")
 
 add_library(gsplat ${GSPLAT_SOURCES})
 target_link_libraries(gsplat ${TORCH_LIBRARIES})
-target_include_directories(gsplat PUBLIC submodules/gsplat/gsplat/cuda/include
-                           submodules/gsplat/gsplat/cuda/csrc/third_party/glm)
+target_include_directories(
+  gsplat PUBLIC submodules/gsplat/gsplat/cuda/include
+                submodules/gsplat/gsplat/cuda/csrc/third_party/glm)
 
 # Add your gsplat_cpp library
 file(GLOB_RECURSE GSPLAT_CPP_SOURCES gsplat_cpp/*.cpp)
